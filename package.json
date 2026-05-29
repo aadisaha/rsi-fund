@@ -1,0 +1,43 @@
+{
+  "name": "self-recursive-quant-fund",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.19 <23",
+    "npm": ">=10"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "cycle:once": "node scripts/cycle-once.mjs",
+    "cycle:enqueue": "node scripts/cycle-enqueue.mjs",
+    "cycle:daemon": "node scripts/cycle-daemon.mjs",
+    "cycle:worker": "node scripts/cycle-worker.mjs",
+    "lint": "eslint",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@types/pg": "^8.20.0",
+    "next": "^16.2.6",
+    "pg": "^8.21.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.1",
+    "server-only": "^0.0.1"
+  },
+  "overrides": {
+    "postcss": "8.5.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^4.0.15"
+  }
+}
