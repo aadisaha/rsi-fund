@@ -985,10 +985,15 @@ function Certificate({ data }: { data: DashboardPayload }) {
             {data.tRsi.approved ? "paper certificate clears" : "paper certificate withheld"}
           </span>
           <span className="mono text-xs text-[color:var(--muted)]">
-            {data.tRsi.status.replaceAll("_", " ")}
+            {(data.tRsi.engine ?? data.tRsi.status).replaceAll("_", " ")}
           </span>
         </div>
         <p className="mt-2 text-sm text-[color:var(--muted)]">{data.tRsi.reason}</p>
+        {data.tRsi.evidence ? (
+          <p className="mt-2 mono text-xs text-[color:var(--muted)]">
+            {data.tRsi.evidence.sampleSize} Kalshi samples · {data.tRsi.evidence.horizonMinutes}m horizon
+          </p>
+        ) : null}
       </div>
     </Panel>
   );

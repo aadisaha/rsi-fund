@@ -21,10 +21,11 @@ npm run cycle:once
 npm run cycle:enqueue
 npm run cycle:daemon
 npm run cycle:worker
+npm run kalshi:backfill -- --market SERIES:TICKER --start 2025-01-01 --end 2025-01-08
 npm run storage:check
 ```
 
-`cycle:once`, `cycle:enqueue`, `cycle:daemon`, `cycle:worker`, and `storage:check` call the local app API, so `npm run dev` or `npm start` must already be running. Enqueue paper cycles with `POST /api/cycle/enqueue`; the worker claims queued jobs through the API and records terminal job status.
+`cycle:once`, `cycle:enqueue`, `cycle:daemon`, `cycle:worker`, `kalshi:backfill`, and `storage:check` call the local app API, so `npm run dev` or `npm start` must already be running. Enqueue paper cycles with `POST /api/cycle/enqueue`; the worker claims queued jobs through the API and records terminal job status.
 
 Production operators should also read [docs/production.md](docs/production.md) for Postgres persistence, storage fallback behavior, worker/queue posture, replay/audit usage, and the live-order design-review boundary.
 
@@ -46,6 +47,7 @@ Do not paste secrets into chat or commit `.env.local`. Use restricted API keys a
 - Local experiment registry tying cycles back to a model/spec.
 - Local job registry for cycle idempotency, enqueueing, worker claims, and daemon observability.
 - Server-side historical replay bundle builder for paper-cycle audit checks.
+- Compressed Kalshi 1-minute candle backfill cache under `.data/kalshi-history` plus an empirical t-RSI evidence path that activates after enough real samples are present.
 - Paper risk engine for stale cache, notional, exposure, capital, symbol count, and kill-switch checks.
 - Experimental t-RSI certificate tracking.
 - Ops tab showing credit-dependent build surface.

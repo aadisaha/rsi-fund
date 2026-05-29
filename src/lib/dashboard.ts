@@ -4,6 +4,7 @@ import { alpacaStatus, fetchAlpacaSnapshot } from "@/lib/alpaca";
 import { buildOpsCapabilityGroups, buildSecretStatus } from "@/lib/capabilities";
 import { readExperimentRegistry } from "@/lib/experiments";
 import { kalshiStatus, fetchKalshiSnapshot } from "@/lib/kalshi";
+import { buildKalshiTrainingEvidence, readKalshiHistoryManifest } from "@/lib/kalshi-history";
 import { buildInvestmentChannelCalibration } from "@/lib/investment-estimator";
 import { readLedger, seedInitialLedger } from "@/lib/ledger";
 import { readMarketCacheSummary } from "@/lib/market-cache";
@@ -23,7 +24,17 @@ type DashboardPayloadWithRecursion = DashboardPayload & {
 
 export async function buildDashboardPayload(): Promise<DashboardPayload> {
   await seedInitialLedger();
-  const [alpaca, kalshi, ledger, cache, paperBook, experimentRegistry, recursion] = await Promise.all([
+  const [
+    alpaca,
+    kalshi,
+    ledger,
+    cache,
+    paperBook,
+    experimentRegistry,
+    recursion,
+    kalshiEvidence,
+    kalshiHistory,
+  ] = await Promise.all([
     fetchAlpacaSnapshot(),
     fetchKalshiSnapshot(),
     readLedger(60),
@@ -31,6 +42,8 @@ export async function buildDashboardPayload(): Promise<DashboardPayload> {
     readMarkedPaperBook(),
     readExperimentRegistry(),
     readRecursionState(),
+    buildKalshiTrainingEvidence(),
+    readKalshiHistoryManifest(),
   ]);
 
   const alpacaAccount = alpaca.ok
@@ -72,7 +85,7 @@ export async function buildDashboardPayload(): Promise<DashboardPayload> {
     recentLedgerCount: ledger.length,
     investmentEstimate: investmentCalibration.channel,
   });
-  const tRsi = computeTRsi(proposal);
+  const tRsi = computeTRsi(proposal, kalshiEvidence);
 
   const runs = ledger.filter((r) => r.type === "forecast");
   const models = ledger.filter((r) => r.type === "model_version");
@@ -144,6 +157,7 @@ export async function buildDashboardPayload(): Promise<DashboardPayload> {
       cache,
       notes: [
         "Default cycle universe is BTC/USD, ETH/USD, and SOL/USD on 15-minute Alpaca crypto bars.",
+        `Kalshi history cache contains ${Object.keys(kalshiHistory.markets).length} market${Object.keys(kalshiHistory.markets).length === 1 ? "" : "s"}; empirical t-RSI activates after the configured sample floor is met.`,
         "Crypto cycles are designed for 24/7 data collection and quick paper feedback.",
         "t-RSI is experimental and not audit-ready.",
         "Durable production jobs and hosted persistence are still needed for unattended collection.",

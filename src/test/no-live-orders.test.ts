@@ -16,11 +16,14 @@ describe("no live order surface", () => {
     const files = [
       "src/lib/alpaca.ts",
       "src/lib/kalshi.ts",
+      "src/lib/kalshi-history.ts",
       "src/app/api/cycle/run/route.ts",
       "src/app/api/cycle/enqueue/route.ts",
       "src/app/api/cycle/worker/route.ts",
+      "src/app/api/kalshi/history/backfill/route.ts",
       "src/app/api/paper/propose/route.ts",
       "src/components/DashboardClient.tsx",
+      "scripts/kalshi-history-backfill.mjs",
     ];
 
     const contents = await Promise.all(

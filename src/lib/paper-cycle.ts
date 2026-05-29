@@ -3,6 +3,7 @@ import "server-only";
 import { fetchAlpacaSnapshot } from "@/lib/alpaca";
 import { activeExperiment } from "@/lib/experiments";
 import { buildInvestmentChannelCalibration } from "@/lib/investment-estimator";
+import { buildKalshiTrainingEvidence } from "@/lib/kalshi-history";
 import { appendLedger } from "@/lib/ledger";
 import { defaultCycleSymbols, ensureMarketCache } from "@/lib/market-cache";
 import { buildAllocationProposal } from "@/lib/optimizer";
@@ -115,6 +116,7 @@ export async function runPaperCycle(symbols?: string[]): Promise<PaperCycleRun> 
   ]);
   const outcomeEvaluation = buildOutcomeEvaluationSummary(paperBook);
   const investmentCalibration = buildInvestmentChannelCalibration(paperBook);
+  const kalshiEvidence = await buildKalshiTrainingEvidence();
 
   const proposal = buildAllocationProposal({
     equityUsd: alpaca.ok ? alpaca.equityUsd : null,
@@ -123,7 +125,7 @@ export async function runPaperCycle(symbols?: string[]): Promise<PaperCycleRun> 
     recentLedgerCount: cacheResult.entries.length,
     investmentEstimate: investmentCalibration.channel,
   });
-  const tRsi = computeTRsi(proposal);
+  const tRsi = computeTRsi(proposal, kalshiEvidence);
 
   const forecasts = cacheResult.entries
     .map((entry) => forecastFromEntry(entry, experiment.parameters))

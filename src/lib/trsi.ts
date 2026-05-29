@@ -1,5 +1,14 @@
 import type { AllocationProposal, TRsiResult } from "@/lib/types";
 
+export type TRsiEmpiricalEvidence = {
+  source: string;
+  sampleSize: number;
+  minSamples: number;
+  horizonMinutes: number;
+  createSamples: number[];
+  decaySamples: number[];
+};
+
 function seededNormal(seed: number): () => number {
   let s = seed;
   function rand() {
@@ -22,7 +31,10 @@ function sd(xs: number[]): number {
   return Math.sqrt(mean(xs.map((x) => (x - m) ** 2)));
 }
 
-export function computeTRsi(proposal: AllocationProposal): TRsiResult {
+export function computeTRsi(
+  proposal: AllocationProposal,
+  evidence?: TRsiEmpiricalEvidence | null,
+): TRsiResult {
   const normal = seededNormal(42);
   const total = Math.max(proposal.deployableCapitalUsd, 1);
   const baseCreate = proposal.channels.reduce(
@@ -39,9 +51,24 @@ export function computeTRsi(proposal: AllocationProposal): TRsiResult {
 
   const createSamples: number[] = [];
   const decaySamples: number[] = [];
-  for (let i = 0; i < 400; i += 1) {
-    createSamples.push(Math.max(0, baseCreate + normal() * createSigma));
-    decaySamples.push(Math.max(0, decayMean + normal() * decaySigma));
+  const empiricalReady =
+    evidence &&
+    evidence.createSamples.length >= evidence.minSamples &&
+    evidence.decaySamples.length >= evidence.minSamples;
+
+  if (empiricalReady) {
+    const investmentBudget = proposal.channels.find((c) => c.id === "I")?.proposedUsd ?? 0;
+    const investmentIntensity = Math.max(0.01, investmentBudget / total);
+    const sampleCount = Math.min(2_000, evidence.createSamples.length, evidence.decaySamples.length);
+    for (let i = 0; i < sampleCount; i += 1) {
+      createSamples.push(Math.max(0, evidence.createSamples[i] * investmentIntensity));
+      decaySamples.push(Math.max(0, evidence.decaySamples[i] * investmentIntensity));
+    }
+  } else {
+    for (let i = 0; i < 400; i += 1) {
+      createSamples.push(Math.max(0, baseCreate + normal() * createSigma));
+      decaySamples.push(Math.max(0, decayMean + normal() * decaySigma));
+    }
   }
 
   const alphaCreateMean = mean(createSamples);
@@ -56,6 +83,7 @@ export function computeTRsi(proposal: AllocationProposal): TRsiResult {
   return {
     generatedAt: new Date().toISOString(),
     status: "experimental_not_audit_ready",
+    engine: empiricalReady ? "kalshi-empirical" : "synthetic-prior",
     horizonDays: 90,
     tRsi,
     alphaCreateMean,
@@ -64,13 +92,25 @@ export function computeTRsi(proposal: AllocationProposal): TRsiResult {
     threshold,
     approved,
     reason: approved
-      ? "Paper certificate clears experimental v0 threshold."
-      : "Paper certificate does not clear threshold or constraints.",
+      ? empiricalReady
+        ? "Paper certificate clears experimental v0 threshold using Kalshi empirical history."
+        : "Paper certificate clears experimental v0 threshold."
+      : empiricalReady
+        ? "Paper certificate does not clear threshold or constraints using Kalshi empirical history."
+        : "Paper certificate does not clear threshold or constraints.",
     samples: [
       { bucket: "p10", create: quantile(createSamples, 0.1), decay: quantile(decaySamples, 0.1) },
       { bucket: "p50", create: quantile(createSamples, 0.5), decay: quantile(decaySamples, 0.5) },
       { bucket: "p90", create: quantile(createSamples, 0.9), decay: quantile(decaySamples, 0.9) },
     ],
+    evidence: empiricalReady
+      ? {
+          source: evidence.source,
+          sampleSize: evidence.sampleSize,
+          minSamples: evidence.minSamples,
+          horizonMinutes: evidence.horizonMinutes,
+        }
+      : undefined,
   };
 }
 

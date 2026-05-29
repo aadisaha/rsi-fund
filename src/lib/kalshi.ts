@@ -57,7 +57,7 @@ export function kalshiMode(): "demo" | "production" {
   return "demo";
 }
 
-function baseUrl(): string {
+export function kalshiBaseUrl(): string {
   return kalshiMode() === "demo" ? DEMO_BASE : PROD_BASE;
 }
 
@@ -97,7 +97,7 @@ export function kalshiSignedHeaders(method: string, path: string): Record<string
 }
 
 async function kalshiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${baseUrl()}${path}`, {
+  const res = await fetch(`${kalshiBaseUrl()}${path}`, {
     headers: kalshiSignedHeaders("GET", path),
     cache: "no-store",
   });
@@ -143,7 +143,7 @@ export async function fetchKalshiMarketInfo(
   ticker: string,
 ): Promise<KalshiMarketInfo | null> {
   const res = await fetch(
-    `${baseUrl()}/trade-api/v2/markets/${encodeURIComponent(ticker)}`,
+    `${kalshiBaseUrl()}/trade-api/v2/markets/${encodeURIComponent(ticker)}`,
     { headers: { Accept: "application/json" }, cache: "no-store" },
   );
   if (!res.ok) return null;

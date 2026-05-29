@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireOperatorAccess } from "@/lib/access";
+import { buildKalshiTrainingEvidence } from "@/lib/kalshi-history";
 import { appendLedger } from "@/lib/ledger";
 import { buildAllocationProposal } from "@/lib/optimizer";
 import { computeTRsi } from "@/lib/trsi";
@@ -16,7 +17,8 @@ export async function POST(req: Request) {
     kalshiPortfolioUsd: null,
     recentLedgerCount: 0,
   });
-  const tRsi = computeTRsi(proposal);
+  const evidence = await buildKalshiTrainingEvidence();
+  const tRsi = computeTRsi(proposal, evidence);
   await appendLedger({
     type: "paper_action",
     action: tRsi.approved ? "proposal" : "rejected",

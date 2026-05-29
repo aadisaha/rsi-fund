@@ -144,6 +144,7 @@ export type InvestmentChannelCalibration = {
 export type TRsiResult = {
   generatedAt: string;
   status: "experimental_not_audit_ready";
+  engine?: "synthetic-prior" | "kalshi-empirical";
   horizonDays: number;
   tRsi: number;
   alphaCreateMean: number;
@@ -153,6 +154,12 @@ export type TRsiResult = {
   approved: boolean;
   reason: string;
   samples: Array<{ bucket: string; create: number; decay: number }>;
+  evidence?: {
+    source: string;
+    sampleSize: number;
+    minSamples: number;
+    horizonMinutes: number;
+  };
 };
 
 export type DashboardPayload = {

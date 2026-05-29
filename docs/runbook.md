@@ -27,6 +27,18 @@ Use the `cycleId` printed by `npm run cycle:once`, or from a `paper_action` ledg
 
 Use `/api/audit/replay?cycleId=<cycle-id>` or `POST /api/audit/replay` with `{ "cycleId": "..." }` to generate a replay bundle. For non-localhost targets, include `Authorization: Bearer $AGENT_API_TOKEN`. Export the resulting JSON to the audit artifact store for review.
 
+## Kalshi Minute Backfill
+
+Kalshi history backfills are read-only data jobs. Start the app first, then call:
+
+```bash
+npm run kalshi:backfill -- --market SERIES:TICKER --start 2025-01-01 --end 2025-01-08
+```
+
+Use `--market historical:TICKER` for archived markets. The script stores partitioned `.jsonl.gz` candle files and a manifest under `.data/kalshi-history` unless `KALSHI_HISTORY_DATA_DIR` is set. `GET /api/kalshi/history/summary` reports the manifest and whether enough samples exist for empirical t-RSI.
+
+Empirical t-RSI activates only after `KALSHI_TRSI_MIN_SAMPLES` one-minute samples are available. The backfill cache is training/audit input only; it does not create any order route or live execution permission.
+
 ## Stop The System
 
 Stop the dev server or daemon process. There is no live execution route, so stopping the process stops all paper-cycle activity.
