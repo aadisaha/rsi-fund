@@ -11,15 +11,21 @@ export { storageMode, storageStatus, type StorageMode } from "@/lib/storage-stat
 let pool: Pool | null = null;
 let schemaReady: Promise<void> | null = null;
 
+function localDataDirOverride(): string | null {
+  const value = process.env.QUANT_DATA_DIR?.trim();
+  return value ? value : null;
+}
+
 export function dataDir(): string {
   return (
-    process.env.QUANT_DATA_DIR ??
+    localDataDirOverride() ??
     path.join(/*turbopackIgnore: true*/ process.cwd(), ".data")
   );
 }
 
 export function dataPath(fileName: string): string {
-  if (process.env.QUANT_DATA_DIR) return path.join(process.env.QUANT_DATA_DIR, fileName);
+  const override = localDataDirOverride();
+  if (override) return path.join(override, fileName);
   return path.join(/*turbopackIgnore: true*/ process.cwd(), ".data", fileName);
 }
 
