@@ -22,6 +22,7 @@ npm run cycle:enqueue
 npm run cycle:daemon
 npm run cycle:worker
 npm run kalshi:backfill -- --market SERIES:TICKER --start 2025-01-01 --end 2025-01-08
+npm run kalshi:backfill -- --series KXBTC15M --last-year --max-markets 1000
 npm run storage:check
 ```
 

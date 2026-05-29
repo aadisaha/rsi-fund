@@ -35,7 +35,15 @@ Kalshi history backfills are read-only data jobs. Start the app first, then call
 npm run kalshi:backfill -- --market SERIES:TICKER --start 2025-01-01 --end 2025-01-08
 ```
 
-Use `--market historical:TICKER` for archived markets. The script stores partitioned `.jsonl.gz` candle files and a manifest under `.data/kalshi-history` unless `KALSHI_HISTORY_DATA_DIR` is set. `GET /api/kalshi/history/summary` reports the manifest and whether enough samples exist for empirical t-RSI.
+Use `--market historical:TICKER` for archived markets. To auto-discover every market in a recurring series, use:
+
+```bash
+npm run kalshi:backfill -- --series KXBTC15M --last-year --max-markets 1000
+```
+
+The script stores partitioned `.jsonl.gz` candle files and a manifest under `.data/kalshi-history` unless `KALSHI_HISTORY_DATA_DIR` is set. `GET /api/kalshi/history/summary` reports the manifest and whether enough samples exist for empirical t-RSI.
+
+For large ranges, tune `KALSHI_HISTORY_THROTTLE_MS`, `KALSHI_HISTORY_RETRIES`, and `--max-markets` to stay within Kalshi rate limits. A full year of a 15-minute series is tens of thousands of markets, so run it in batches.
 
 Empirical t-RSI activates only after `KALSHI_TRSI_MIN_SAMPLES` one-minute samples are available. The backfill cache is training/audit input only; it does not create any order route or live execution permission.
 

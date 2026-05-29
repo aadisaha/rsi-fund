@@ -8,6 +8,7 @@ import {
   backfillKalshiHistory,
   buildKalshiCandlesticksPath,
   buildKalshiTrainingEvidence,
+  discoverKalshiMarkets,
   readKalshiCandles,
   readKalshiHistoryManifest,
 } from "@/lib/kalshi-history";
@@ -104,6 +105,40 @@ describe("kalshi history", () => {
     expect(candles).toHaveLength(2);
     expect(candles[0].price.close).toBe(0.52);
     expect(manifest.markets["KXBTC-TEST"].files[0]).toContain(".jsonl.gz");
+  });
+
+  it("discovers markets by series across historical and live endpoints", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const historical = url.includes("/historical/markets?");
+        return {
+          ok: true,
+          json: async () => ({
+            cursor: "",
+            markets: [
+              {
+                ticker: historical ? "KXBTC15M-26MAR291930-30" : "KXBTC15M-26MAY291930-30",
+                close_time: historical ? "2026-03-29T23:30:00Z" : "2026-05-29T23:30:00Z",
+                status: historical ? "finalized" : "initialized",
+              },
+            ],
+          }),
+        };
+      }),
+    );
+
+    const markets = await discoverKalshiMarkets({
+      seriesTickers: ["KXBTC15M"],
+      startTs: Date.parse("2026-01-01T00:00:00Z") / 1000,
+      endTs: Date.parse("2026-06-01T00:00:00Z") / 1000,
+    });
+
+    expect(markets.map((m) => m.marketTicker)).toEqual([
+      "KXBTC15M-26MAR291930-30",
+      "KXBTC15M-26MAY291930-30",
+    ]);
+    expect(markets.map((m) => m.source)).toEqual(["historical", "live"]);
   });
 
   it("builds empirical samples once enough minute candles exist", async () => {

@@ -48,6 +48,19 @@ type RawCandlesticksResponse = {
   candlesticks?: RawCandlestick[];
 };
 
+type RawMarket = {
+  ticker?: string;
+  close_time?: string | null;
+  expiration_time?: string | null;
+  settlement_ts?: string | null;
+  status?: string | null;
+};
+
+type RawMarketsResponse = {
+  markets?: RawMarket[];
+  cursor?: string;
+};
+
 export type KalshiCandle = {
   marketTicker: string;
   seriesTicker: string | null;
@@ -82,11 +95,13 @@ export type KalshiHistoryMarketRequest = {
 };
 
 export type KalshiBackfillRequest = {
-  markets: KalshiHistoryMarketRequest[];
+  markets?: KalshiHistoryMarketRequest[];
+  seriesTickers?: string[];
   startTs: number;
   endTs: number;
   periodInterval?: KalshiPeriodInterval;
   chunkMinutes?: number;
+  maxMarkets?: number;
 };
 
 export type KalshiBackfillResult = {
@@ -95,6 +110,7 @@ export type KalshiBackfillResult = {
   periodInterval: KalshiPeriodInterval;
   startTs: number;
   endTs: number;
+  discoveredMarkets: number;
   requests: Array<{
     marketTicker: string;
     seriesTicker: string | null;
@@ -104,6 +120,11 @@ export type KalshiBackfillResult = {
     files: string[];
   }>;
   manifest: KalshiHistoryManifest;
+};
+
+export type KalshiDiscoveredMarket = KalshiHistoryMarketRequest & {
+  closeTs: number | null;
+  status: string | null;
 };
 
 export type KalshiHistoryManifest = {
@@ -158,6 +179,48 @@ function parseNumber(value: string | number | null | undefined): number | null {
   if (value == null || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function parseTimeSeconds(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+}
+
+function envNumber(name: string, fallback: number): number {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function kalshiFetchJson<T>(apiPath: string): Promise<T> {
+  const retries = Math.max(0, Math.min(envNumber("KALSHI_HISTORY_RETRIES", 4), 8));
+  const throttleMs = Math.max(0, envNumber("KALSHI_HISTORY_THROTTLE_MS", 250));
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    if (throttleMs) await sleep(throttleMs);
+    const res = await fetch(`${kalshiBaseUrl()}${apiPath}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (res.ok) return (await res.json()) as T;
+
+    const body = await res.text();
+    if (res.status !== 429 || attempt >= retries) {
+      throw new Error(`Kalshi read failed (${res.status}): ${body.slice(0, 180)}`);
+    }
+
+    const retryAfter = Number(res.headers?.get("retry-after"));
+    const backoffMs = Number.isFinite(retryAfter)
+      ? retryAfter * 1000
+      : Math.min(20_000, 1_000 * 2 ** attempt);
+    await sleep(backoffMs);
+  }
+
+  throw new Error("Kalshi read failed after retries.");
 }
 
 function normalizeOhlc(raw: RawOhlc | undefined): Ohlc {
@@ -233,15 +296,7 @@ export async function fetchKalshiCandlesticks(args: {
   periodInterval: KalshiPeriodInterval;
 }): Promise<KalshiCandle[]> {
   const apiPath = buildKalshiCandlesticksPath(args);
-  const res = await fetch(`${kalshiBaseUrl()}${apiPath}`, {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Kalshi candles failed (${res.status}): ${body.slice(0, 180)}`);
-  }
-  const json = (await res.json()) as RawCandlesticksResponse;
+  const json = await kalshiFetchJson<RawCandlesticksResponse>(apiPath);
   const ticker = json.ticker || args.marketTicker;
   return (json.candlesticks ?? [])
     .map((raw) =>
@@ -254,6 +309,68 @@ export async function fetchKalshiCandlesticks(args: {
       }),
     )
     .filter((c): c is KalshiCandle => Boolean(c));
+}
+
+async function fetchKalshiMarketsPage(args: {
+  seriesTicker: string;
+  source: KalshiHistorySource;
+  cursor?: string;
+}): Promise<RawMarketsResponse> {
+  const query = new URLSearchParams({
+    series_ticker: args.seriesTicker,
+    limit: "1000",
+  });
+  if (args.cursor) query.set("cursor", args.cursor);
+  const prefix = args.source === "historical" ? "/trade-api/v2/historical/markets" : "/trade-api/v2/markets";
+  return kalshiFetchJson<RawMarketsResponse>(`${prefix}?${query}`);
+}
+
+export async function discoverKalshiMarkets(args: {
+  seriesTickers: string[];
+  startTs: number;
+  endTs: number;
+  maxMarkets?: number;
+}): Promise<KalshiDiscoveredMarket[]> {
+  const maxMarkets = Math.max(1, args.maxMarkets ?? 50_000);
+  const markets = new Map<string, KalshiDiscoveredMarket>();
+
+  for (const seriesTicker of args.seriesTickers) {
+    for (const source of ["historical", "live"] as const) {
+      let cursor = "";
+      do {
+        const page = await fetchKalshiMarketsPage({
+          seriesTicker,
+          source,
+          cursor: cursor || undefined,
+        });
+        for (const raw of page.markets ?? []) {
+          if (!raw.ticker) continue;
+          const closeTs =
+            parseTimeSeconds(raw.settlement_ts) ??
+            parseTimeSeconds(raw.close_time) ??
+            parseTimeSeconds(raw.expiration_time);
+          if (closeTs != null && (closeTs < args.startTs || closeTs > args.endTs)) continue;
+          const key = `${source}:${raw.ticker}`;
+          markets.set(key, {
+            marketTicker: raw.ticker,
+            seriesTicker,
+            source,
+            closeTs,
+            status: raw.status ?? null,
+          });
+          if (markets.size >= maxMarkets) return [...markets.values()];
+        }
+        cursor = page.cursor ?? "";
+      } while (cursor && markets.size < maxMarkets);
+    }
+  }
+
+  return [...markets.values()].sort((a, b) => {
+    const at = a.closeTs ?? 0;
+    const bt = b.closeTs ?? 0;
+    if (at !== bt) return at - bt;
+    return a.marketTicker.localeCompare(b.marketTicker);
+  });
 }
 
 async function readJsonlGz(file: string): Promise<KalshiCandle[]> {
@@ -398,10 +515,20 @@ async function updateManifest(
 }
 
 export async function backfillKalshiHistory(request: KalshiBackfillRequest): Promise<KalshiBackfillResult> {
-  if (!request.markets.length) throw new Error("At least one Kalshi market is required.");
   if (!Number.isFinite(request.startTs) || !Number.isFinite(request.endTs) || request.endTs < request.startTs) {
     throw new Error("Provide a valid startTs/endTs window.");
   }
+
+  const discovered = request.seriesTickers?.length
+    ? await discoverKalshiMarkets({
+        seriesTickers: request.seriesTickers,
+        startTs: request.startTs,
+        endTs: request.endTs,
+        maxMarkets: request.maxMarkets,
+      })
+    : [];
+  const markets = [...(request.markets ?? []), ...discovered];
+  if (!markets.length) throw new Error("At least one Kalshi market or series ticker is required.");
 
   const root = dataDir();
   await mkdir(root, { recursive: true });
@@ -410,7 +537,7 @@ export async function backfillKalshiHistory(request: KalshiBackfillRequest): Pro
   const manifest = await readManifest(root);
   const requests: KalshiBackfillResult["requests"] = [];
 
-  for (const market of request.markets) {
+  for (const market of markets) {
     const source = market.source ?? (market.seriesTicker ? "live" : "historical");
     let cursor = request.startTs;
     const fetched: KalshiCandle[] = [];
@@ -449,6 +576,7 @@ export async function backfillKalshiHistory(request: KalshiBackfillRequest): Pro
     periodInterval,
     startTs: request.startTs,
     endTs: request.endTs,
+    discoveredMarkets: discovered.length,
     requests,
     manifest,
   };
