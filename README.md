@@ -21,9 +21,10 @@ npm run cycle:once
 npm run cycle:enqueue
 npm run cycle:daemon
 npm run cycle:worker
+npm run storage:check
 ```
 
-`cycle:once`, `cycle:enqueue`, `cycle:daemon`, and `cycle:worker` call the local app API, so `npm run dev` or `npm start` must already be running. Enqueue paper cycles with `POST /api/cycle/enqueue`; the worker claims queued jobs through the API and records terminal job status.
+`cycle:once`, `cycle:enqueue`, `cycle:daemon`, `cycle:worker`, and `storage:check` call the local app API, so `npm run dev` or `npm start` must already be running. Enqueue paper cycles with `POST /api/cycle/enqueue`; the worker claims queued jobs through the API and records terminal job status.
 
 Production operators should also read [docs/production.md](docs/production.md) for Postgres persistence, storage fallback behavior, worker/queue posture, replay/audit usage, and the live-order design-review boundary.
 
@@ -38,7 +39,7 @@ Do not paste secrets into chat or commit `.env.local`. Use restricted API keys a
 - Operator cockpit with Alpaca/Kalshi read-only status.
 - 24/7 paper cycle for default crypto universe: BTC, ETH, SOL.
 - Local `.data/ledger.jsonl`, `.data/market-cache.json`, and `.data/paper-book.json` unless `QUANT_DATA_DIR` is set.
-- Optional Postgres persistence when `DATABASE_URL` is set; `QUANT_STORAGE_DRIVER=local` forces the local fallback.
+- Optional Postgres persistence when `DATABASE_URL` is set; `QUANT_STORAGE_DRIVER=local` forces the local fallback. `npm run storage:check` verifies the selected storage path with a document and job round trip.
 - Baseline diagnostic backtest.
 - Paper optimizer over the five white-paper channels.
 - Horizon-based paper outcome evaluation for 1h, 6h, 24h, and 7d checks.

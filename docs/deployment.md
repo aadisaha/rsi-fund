@@ -22,6 +22,8 @@ Use credits here for:
 
 Set `DATABASE_URL` for durable storage. Set `POSTGRES_SSL=true` for managed Postgres providers that require TLS, and tune `POSTGRES_POOL_MAX` conservatively for the chosen instance size. Do not deploy with `.data/` as the authoritative store beyond a temporary smoke test.
 
+After deploy, run `CYCLE_BASE_URL=https://YOUR_APP_HOST npm run storage:check` to verify the selected storage driver with a document and job round trip.
+
 ## Cloudflare
 
 Use credits here for:

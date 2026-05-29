@@ -14,6 +14,7 @@
     "cycle:enqueue": "node scripts/cycle-enqueue.mjs",
     "cycle:daemon": "node scripts/cycle-daemon.mjs",
     "cycle:worker": "node scripts/cycle-worker.mjs",
+    "storage:check": "node scripts/storage-check.mjs",
     "lint": "eslint",
     "test": "vitest run"
   },

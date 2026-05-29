@@ -17,6 +17,10 @@ The append-only local ledger is `.data/ledger.jsonl`. Each paper cycle records o
 
 When `DATABASE_URL` is set and `QUANT_STORAGE_DRIVER` is not `local`, ledger records are stored in Postgres table `quant_ledger_records` instead of `.data/ledger.jsonl`.
 
+## Storage Check
+
+Run `npm run storage:check` against a running app to verify the selected storage driver. It performs a harmless document round trip plus a `storage-check` job run. For deployed targets, set `CYCLE_BASE_URL` and `AGENT_API_TOKEN`, or call `POST /api/storage/check` with a Bearer token.
+
 ## Historical Replay
 
 Use the `cycleId` printed by `npm run cycle:once`, or from a `paper_action` ledger record. The server-side replay helper builds a bundle with the cycle payload, related ledger records, filtration checks, market-data cutoff checks, forecast/certificate presence, and paper-only verification.

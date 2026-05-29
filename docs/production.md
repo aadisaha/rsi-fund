@@ -23,6 +23,14 @@ Storage selection:
 
 Use local fallback only for development and smoke tests. It is not durable enough for unattended paper collection or audit retention.
 
+After setting production storage env vars and starting the app, run:
+
+```bash
+CYCLE_BASE_URL=https://YOUR_APP_HOST npm run storage:check
+```
+
+or call `POST /api/storage/check`. The check writes and reads a harmless `storage-check` document and a `storage-check` job run through the selected storage driver. For non-localhost targets, include `Authorization: Bearer $AGENT_API_TOKEN`.
+
 ## Dashboard Hardening
 
 Keep the dashboard private by default. Non-localhost access requires `AGENT_API_TOKEN` as a Bearer token; production deployments should also sit behind Cloudflare Access, a WAF, or an equivalent identity-aware proxy. Do not expose broker credentials, Postgres credentials, or LLM keys to browser-side code or research-agent prompts.
