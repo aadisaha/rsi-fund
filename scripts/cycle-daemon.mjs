@@ -1,5 +1,5 @@
 const intervalMs = Number(process.env.CYCLE_INTERVAL_MS ?? 15 * 60 * 1000);
-const minIntervalMs = 60 * 1000;
+const minIntervalMs = 30 * 1000;
 const delay = Math.max(intervalMs, minIntervalMs);
 
 async function runOnce() {

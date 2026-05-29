@@ -6,7 +6,7 @@ Environment:
 
 - `CYCLE_BASE_URL`: app URL, default `http://localhost:3000`.
 - `CYCLE_SYMBOLS`: comma-separated universe, default from app config.
-- `CYCLE_INTERVAL_MS`: interval, minimum one minute.
+- `CYCLE_INTERVAL_MS`: interval, minimum 30 seconds.
 - `CYCLE_IDEMPOTENCY_KEY`: optional stable key for `cycle:enqueue`.
 - `CYCLE_WORKER_POLL_MS`: queue worker poll interval, minimum one second.
 - `CYCLE_WORKER_ONCE`: when `true`, worker exits after one claim attempt.
@@ -43,7 +43,7 @@ CYCLE_BASE_URL=https://YOUR_APP_HOST npm run cycle:once
 Run the direct local daemon:
 
 ```bash
-CYCLE_BASE_URL=https://YOUR_APP_HOST CYCLE_INTERVAL_MS=900000 npm run cycle:daemon
+CYCLE_BASE_URL=https://YOUR_APP_HOST CYCLE_INTERVAL_MS=30000 npm run cycle:daemon
 ```
 
 Run the queue worker:

@@ -151,7 +151,7 @@ export async function enqueuePaperCycleJob(
   const requestedKey = cleanString(input.idempotencyKey);
   const idempotencyKey =
     requestedKey ||
-    `${new Date().toISOString().slice(0, 16)}:${symbols?.join(",") ?? "active-experiment"}`;
+    `${new Date().toISOString().slice(0, 19)}:${symbols?.join(",") ?? "active-experiment"}`;
   const requestedRunId = cleanString(input.runId);
   const runId = requestedRunId || createRunId("paper-cycle", idempotencyKey);
   const at = nowIso();

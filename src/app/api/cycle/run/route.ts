@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const idempotencyKey =
       typeof body.idempotencyKey === "string" && body.idempotencyKey.trim()
         ? body.idempotencyKey.trim()
-        : `${new Date().toISOString().slice(0, 16)}:${symbols?.join(",") ?? "active-experiment"}`;
+        : `${new Date().toISOString().slice(0, 19)}:${symbols?.join(",") ?? "active-experiment"}`;
     runId =
       typeof body.runId === "string" && body.runId.trim()
         ? body.runId.trim()
