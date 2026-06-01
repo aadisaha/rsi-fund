@@ -2,8 +2,20 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+async function readLocalEnv(name) {
+  for (const fileName of [".env.local", ".env.vercel.production.local"]) {
+    const text = await readFile(path.join(process.cwd(), fileName), "utf8").catch(() => "");
+    for (const line of text.split(/\n/)) {
+      const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+      if (!match || match[1] !== name) continue;
+      return match[2].trim().replace(/^"|"$/g, "");
+    }
+  }
+  return "";
+}
+
 const baseUrl = process.env.KALSHI_RL_IMPORT_BASE_URL ?? "https://rsi-fund.vercel.app";
-const token = process.env.AGENT_API_TOKEN ?? "";
+const token = process.env.AGENT_API_TOKEN ?? (await readLocalEnv("AGENT_API_TOKEN"));
 const chunkSize = Math.max(100_000, Number(process.env.KALSHI_RL_IMPORT_CHUNK_SIZE ?? 650_000));
 
 const files = [
