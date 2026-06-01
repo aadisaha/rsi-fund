@@ -18,6 +18,7 @@
     "kalshi:orderbook-capture": "node scripts/kalshi-orderbook-capture.mjs",
     "kalshi:rl-once": "node scripts/kalshi-rl-once.mjs",
     "kalshi:rl-daemon": "node scripts/kalshi-rl-daemon.mjs",
+    "kalshi:rl-import-state": "node scripts/kalshi-rl-import-state.mjs",
     "kalshi:pretrained-rl-train": "node scripts/kalshi-pretrained-rl-train.mjs",
     "kalshi:pretrained-rl-once": "node scripts/kalshi-pretrained-rl-once.mjs",
     "kalshi:pretrained-rl-molly": "node scripts/kalshi-pretrained-rl-molly.mjs",

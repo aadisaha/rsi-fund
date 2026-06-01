@@ -46,10 +46,40 @@ export async function ensurePostgresSchema(): Promise<void> {
     const db = postgresPool();
     await db.query(`
       create table if not exists quant_documents (
-        namespace text primary key,
+        namespace text not null,
+        file_name text not null,
         value jsonb not null,
-        updated_at timestamptz not null default now()
+        updated_at timestamptz not null default now(),
+        primary key (namespace, file_name)
       );
+
+      alter table quant_documents
+        add column if not exists file_name text;
+
+      update quant_documents
+         set file_name = namespace
+       where file_name is null;
+
+      do $$
+      begin
+        if exists (
+          select 1
+            from pg_constraint
+           where conrelid = 'quant_documents'::regclass
+             and conname = 'quant_documents_pkey'
+             and contype = 'p'
+             and pg_get_constraintdef(oid) = 'PRIMARY KEY (namespace)'
+        ) then
+          alter table quant_documents drop constraint quant_documents_pkey;
+        end if;
+      end $$;
+
+      alter table quant_documents
+        alter column namespace set not null,
+        alter column file_name set not null;
+
+      create unique index if not exists quant_documents_namespace_file_name_idx
+        on quant_documents (namespace, file_name);
 
       create table if not exists quant_ledger_records (
         id text primary key,
@@ -173,8 +203,8 @@ export async function readDocument<T>(
 ): Promise<T> {
   if (storageMode() === "postgres") {
     const rows = await pgQuery<{ value: unknown }>(
-      "select value from quant_documents where namespace = $1",
-      [namespace],
+      "select value from quant_documents where namespace = $1 and file_name = $2",
+      [namespace, fileName],
     );
     return rows[0] ? normalize(rows[0].value) : fallback;
   }
@@ -188,13 +218,24 @@ export async function writeDocument(
 ): Promise<void> {
   if (storageMode() === "postgres") {
     await pgQuery(
-      `insert into quant_documents (namespace, value, updated_at)
-       values ($1, $2::jsonb, now())
-       on conflict (namespace)
+      `insert into quant_documents (namespace, file_name, value, updated_at)
+       values ($1, $2, $3::jsonb, now())
+       on conflict (namespace, file_name)
        do update set value = excluded.value, updated_at = now()`,
-      [namespace, JSON.stringify(value)],
+      [namespace, fileName, JSON.stringify(value)],
     );
     return;
   }
   await writeJsonFile(fileName, value);
+}
+
+export async function deleteDocument(namespace: string, fileName: string): Promise<void> {
+  if (storageMode() === "postgres") {
+    await pgQuery(
+      "delete from quant_documents where namespace = $1 and file_name = $2",
+      [namespace, fileName],
+    );
+    return;
+  }
+  await unlink(dataPath(fileName)).catch(() => undefined);
 }
