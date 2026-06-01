@@ -172,6 +172,10 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function afterIso(value: string, cutoff: string): boolean {
+  return Date.parse(value) > Date.parse(cutoff);
+}
+
 function defaultDocument(): LiveDocument {
   return {
     version: 1,
@@ -559,6 +563,12 @@ function candidateFromPosition(args: {
   };
 }
 
+function rowIsLiveValidated(
+  row: GeneticTrainingRun["leaderboard"][number],
+): row is GeneticTrainingRun["leaderboard"][number] & { validationAt: string } {
+  return row.tier === "validated" && row.contributesToPerformance === true && typeof row.validationAt === "string";
+}
+
 function buildCandidates(summary: Awaited<ReturnType<typeof readKalshiRlSummary>>, quote: KalshiOrderbookEvent): KalshiLiveOrderIntent[] {
   const lastRun = summary.lastRun as GeneticTrainingRun | null;
   const runId = lastRun?.runId ?? "live";
@@ -566,8 +576,9 @@ function buildCandidates(summary: Awaited<ReturnType<typeof readKalshiRlSummary>
   const candidates: KalshiLiveOrderIntent[] = [];
   const cfg = kalshiLiveConfig();
   for (const row of rows) {
-    if (!row.contributesToPerformance) continue;
+    if (!rowIsLiveValidated(row)) continue;
     for (const position of row.openPositions ?? []) {
+      if (position.openedAt && !afterIso(position.openedAt, row.validationAt)) continue;
       const candidate = candidateFromPosition({
         runId,
         genome: row.genome,

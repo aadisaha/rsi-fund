@@ -101,7 +101,9 @@ function liveSummary(positions: KalshiPaperRlOpenPosition[] = [openPosition()]) 
         genome,
         status: "candidate",
         parentGenomeIds: [],
+        tier: "validated",
         contributesToPerformance: true,
+        validationAt: "2026-06-01T00:00:30.000Z",
         reward: 10,
         pnlUsd: 10,
         trades: 1,
@@ -328,6 +330,39 @@ describe("kalshi live safety", () => {
     expect(result.status.remotePositions).toHaveLength(1);
     expect(result.submitted).toHaveLength(0);
     expect(result.skipped).toHaveLength(1);
+    expect(kalshiMocks.post).not.toHaveBeenCalled();
+  });
+
+  it("does not trade testing-tier or validation-gate-only agents", async () => {
+    kalshiMocks.get.mockImplementation(async (pathArg: string) => {
+      if (pathArg.includes("/orders")) return { orders: [] };
+      if (pathArg.includes("/positions")) return { market_positions: [] };
+      if (pathArg.includes("/balance")) return { balance: 50_000, portfolio_value: 50_000 };
+      return {};
+    });
+    kalshiMocks.post.mockResolvedValue({ order: { order_id: "remote-1", status: "resting" } });
+    rlMocks.summary.mockResolvedValue({
+      ...liveSummary(),
+      liveLeaderboard: [
+        {
+          ...liveSummary().liveLeaderboard[0],
+          tier: "testing",
+          contributesToPerformance: true,
+          validationAt: "2026-06-01T00:00:30.000Z",
+        },
+        {
+          ...liveSummary().liveLeaderboard[0],
+          tier: "validated",
+          contributesToPerformance: false,
+          validationAt: "2026-06-01T00:00:30.000Z",
+        },
+      ],
+    });
+
+    const { runKalshiLiveTick } = await import("@/lib/kalshi-live");
+    const result = await runKalshiLiveTick();
+
+    expect(result.submitted).toHaveLength(0);
     expect(kalshiMocks.post).not.toHaveBeenCalled();
   });
 
