@@ -648,7 +648,7 @@ async function fetchRemotePositions(): Promise<KalshiPosition[]> {
 
 async function fetchRemoteBalanceUsd(): Promise<number | null> {
   const res = await kalshiApiGet<RemoteBalanceResponse>("/trade-api/v2/portfolio/balance");
-  return dollarsFromCents(res.portfolio_value ?? res.balance);
+  return dollarsFromCents(res.balance ?? res.portfolio_value);
 }
 
 export async function runKalshiLiveReconciliation(): Promise<KalshiLiveReconciliationRun> {

@@ -260,6 +260,22 @@ describe("kalshi live safety", () => {
     expect(result.status.recentIntents).toHaveLength(0);
   });
 
+  it("reports cash balance even when Kalshi portfolio_value is zero", async () => {
+    process.env.KALSHI_LIVE_TRADING_ENABLED = "false";
+    kalshiMocks.get.mockImplementation(async (pathArg: string) => {
+      if (pathArg.includes("/orders")) return { orders: [] };
+      if (pathArg.includes("/positions")) return { market_positions: [] };
+      if (pathArg.includes("/balance")) return { balance: 53_500, portfolio_value: 0 };
+      return {};
+    });
+
+    const { runKalshiLiveReconciliation } = await import("@/lib/kalshi-live");
+    const result = await runKalshiLiveReconciliation();
+
+    expect(result.ok).toBe(true);
+    expect(result.balanceUsd).toBe(535);
+  });
+
   it("honors the global exposure cap without resizing order notional", async () => {
     kalshiMocks.get.mockImplementation(async (pathArg: string) => {
       if (pathArg.includes("/orders")) return { orders: [] };
