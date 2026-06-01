@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { NextResponse } from "next/server";
+import { Pool } from "pg";
 
 import { requireOperatorAccess } from "@/lib/access";
-import { deleteDocument, readDocument, writeDocument } from "@/lib/storage";
+import { deleteDocument, readDocument, storageMode, writeDocument } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,17 @@ const ALLOWED_FILES = new Set([
   "kalshi-rl-run-history.json",
   "kalshi-rl-elite-archive.json",
 ]);
+
+let importPool: Pool | null = null;
+
+function postgresPool(): Pool {
+  importPool ??= new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 1,
+    ssl: process.env.POSTGRES_SSL === "true" ? { rejectUnauthorized: false } : undefined,
+  });
+  return importPool;
+}
 
 type ImportChunk = {
   fileName?: string;
@@ -30,6 +42,42 @@ function chunkFileName(fileName: string, sha256: string, index: number): string 
 
 function validSha256(value: string): boolean {
   return /^[a-f0-9]{64}$/i.test(value);
+}
+
+async function writeImportDocument(namespace: string, fileName: string, value: unknown): Promise<void> {
+  if (storageMode() !== "postgres") {
+    await writeDocument(namespace, fileName, value);
+    return;
+  }
+  await postgresPool().query(
+    `insert into quant_documents (namespace, file_name, value, updated_at)
+     values ($1, $2, $3::jsonb, now())
+     on conflict (namespace, file_name)
+     do update set value = excluded.value, updated_at = now()`,
+    [namespace, fileName, JSON.stringify(value)],
+  );
+}
+
+async function readImportDocument(namespace: string, fileName: string): Promise<unknown | null> {
+  if (storageMode() !== "postgres") {
+    return readDocument<unknown | null>(namespace, fileName, null, (value) => value);
+  }
+  const result = await postgresPool().query<{ value: unknown }>(
+    "select value from quant_documents where namespace = $1 and file_name = $2",
+    [namespace, fileName],
+  );
+  return result.rows[0]?.value ?? null;
+}
+
+async function deleteImportDocument(namespace: string, fileName: string): Promise<void> {
+  if (storageMode() !== "postgres") {
+    await deleteDocument(namespace, fileName);
+    return;
+  }
+  await postgresPool().query(
+    "delete from quant_documents where namespace = $1 and file_name = $2",
+    [namespace, fileName],
+  );
 }
 
 export async function POST(req: Request) {
@@ -57,7 +105,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Chunk data must be a string." }, { status: 400 });
     }
 
-    await writeDocument(IMPORT_NAMESPACE, chunkFileName(fileName, sha256, index), data);
+    if (totalChunks === 1) {
+      const actual = createHash("sha256").update(data).digest("hex");
+      if (actual !== sha256.toLowerCase()) {
+        return NextResponse.json({ ok: false, error: "Checksum mismatch." }, { status: 409 });
+      }
+
+      const value = JSON.parse(data) as unknown;
+      await writeImportDocument(TARGET_NAMESPACE, fileName, value);
+      const count = Array.isArray(value) ? value.length : undefined;
+      return NextResponse.json({ ok: true, fileName, complete: true, bytes: Buffer.byteLength(data), count });
+    }
+
+    await writeImportDocument(IMPORT_NAMESPACE, chunkFileName(fileName, sha256, index), data);
 
     if (index !== totalChunks - 1) {
       return NextResponse.json({ ok: true, fileName, chunk: index + 1, totalChunks, complete: false });
@@ -65,12 +125,8 @@ export async function POST(req: Request) {
 
     const chunks: string[] = [];
     for (let i = 0; i < totalChunks; i += 1) {
-      const chunk = await readDocument<string | null>(
-        IMPORT_NAMESPACE,
-        chunkFileName(fileName, sha256, i),
-        null,
-        (value) => (typeof value === "string" ? value : null),
-      );
+      const value = await readImportDocument(IMPORT_NAMESPACE, chunkFileName(fileName, sha256, i));
+      const chunk = typeof value === "string" ? value : null;
       if (chunk == null) {
         return NextResponse.json({ ok: false, error: `Missing chunk ${i}.` }, { status: 409 });
       }
@@ -84,10 +140,10 @@ export async function POST(req: Request) {
     }
 
     const value = JSON.parse(jsonText) as unknown;
-    await writeDocument(TARGET_NAMESPACE, fileName, value);
+    await writeImportDocument(TARGET_NAMESPACE, fileName, value);
     await Promise.all(
       Array.from({ length: totalChunks }, (_, i) =>
-        deleteDocument(IMPORT_NAMESPACE, chunkFileName(fileName, sha256, i)),
+        deleteImportDocument(IMPORT_NAMESPACE, chunkFileName(fileName, sha256, i)),
       ),
     );
 

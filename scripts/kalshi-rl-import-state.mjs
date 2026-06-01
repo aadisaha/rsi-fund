@@ -36,15 +36,25 @@ if (!token) {
 async function postChunk(payload) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
-  const res = await fetch(`${baseUrl}/api/kalshi/rl/import-state`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    signal: controller.signal,
-  }).finally(() => clearTimeout(timeout));
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/api/kalshi/rl/import-state`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`Import request timed out after ${requestTimeoutMs}ms for ${payload.fileName} chunk ${payload.index + 1}/${payload.totalChunks}.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
   const text = await res.text();
   const json = text ? JSON.parse(text) : {};
   if (!res.ok || json.ok === false) {
