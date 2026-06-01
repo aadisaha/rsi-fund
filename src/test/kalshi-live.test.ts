@@ -301,6 +301,36 @@ describe("kalshi live safety", () => {
     expect(result.skipped[0].notionalUsd).toBe(25);
   });
 
+  it("counts real Kalshi positions toward the global exposure cap", async () => {
+    kalshiMocks.get.mockImplementation(async (pathArg: string) => {
+      if (pathArg.includes("/orders")) return { orders: [] };
+      if (pathArg.includes("/positions")) {
+        return {
+          market_positions: [
+            {
+              ticker: "KXBTC15M-REMOTE",
+              market_exposure_dollars: "490.00",
+            },
+          ],
+        };
+      }
+      if (pathArg.includes("/balance")) return { balance: 50_000, portfolio_value: 50_000 };
+      return {};
+    });
+    kalshiMocks.post.mockResolvedValue({ order: { order_id: "remote-1", status: "resting" } });
+    rlMocks.summary.mockResolvedValue(liveSummary());
+
+    const { runKalshiLiveTick } = await import("@/lib/kalshi-live");
+    const result = await runKalshiLiveTick();
+
+    expect(result.status.exposure.remotePositionUsd).toBe(490);
+    expect(result.status.exposure.openUsd).toBe(490);
+    expect(result.status.remotePositions).toHaveLength(1);
+    expect(result.submitted).toHaveLength(0);
+    expect(result.skipped).toHaveLength(1);
+    expect(kalshiMocks.post).not.toHaveBeenCalled();
+  });
+
   it("turning on the operator kill switch cancels resting live orders", async () => {
     let remoteClientOrderId: string | null = null;
     kalshiMocks.get.mockImplementation(async (pathArg: string) => {

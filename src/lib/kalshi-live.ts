@@ -70,6 +70,8 @@ export type KalshiLiveReconciliationRun = {
   localOrderCount: number;
   remoteOrderCount: number;
   remotePositionCount: number;
+  remoteExposureUsd: number;
+  remotePositions: KalshiPosition[];
   balanceUsd: number | null;
   errors: string[];
 };
@@ -102,9 +104,12 @@ export type KalshiLiveStatus = {
   };
   exposure: {
     openUsd: number;
+    pendingOrderUsd: number;
+    remotePositionUsd: number;
     maxOpenUsd: number;
     maxOrderUsd: number;
   };
+  remotePositions: KalshiPosition[];
   recentIntents: KalshiLiveOrderIntent[];
   blockers: string[];
 };
@@ -412,18 +417,30 @@ async function readIntents(limit = 100): Promise<KalshiLiveOrderIntent[]> {
     .slice(0, limit);
 }
 
-function openExposureUsd(intents: KalshiLiveOrderIntent[]): number {
-  const openStatuses = new Set<KalshiLiveIntentStatus>([
+function pendingOrderExposureUsd(intents: KalshiLiveOrderIntent[]): number {
+  const pendingStatuses = new Set<KalshiLiveIntentStatus>([
     "planned",
     "submitted",
     "resting",
     "partial",
-    "filled",
     "unknown",
   ]);
   return intents
-    .filter((intent) => intent.action === "buy" && openStatuses.has(intent.status))
+    .filter((intent) => intent.action === "buy" && pendingStatuses.has(intent.status))
     .reduce((sum, intent) => sum + Math.max(0, intent.notionalUsd), 0);
+}
+
+function dollarsText(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return 0;
+  const parsed = Number(value.replace(/[$,\s]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function remotePositionExposureUsd(positions: KalshiPosition[]): number {
+  return positions.reduce((sum, position) => {
+    return sum + Math.abs(dollarsText(position.market_exposure_dollars));
+  }, 0);
 }
 
 async function recordHeartbeat(at: string): Promise<void> {
@@ -732,6 +749,8 @@ export async function runKalshiLiveReconciliation(): Promise<KalshiLiveReconcili
     localOrderCount: liveLocal.length,
     remoteOrderCount: liveRemoteOrders.length,
     remotePositionCount: remotePositions.length,
+    remoteExposureUsd: remotePositionExposureUsd(remotePositions),
+    remotePositions,
     balanceUsd,
     errors,
   };
@@ -752,6 +771,10 @@ export async function readKalshiLiveStatus(): Promise<KalshiLiveStatus> {
   const recentIntents = (await readIntents(100))
     .filter((intent) => isKalshiLiveClientOrderId(intent.clientOrderId))
     .slice(0, 20);
+  const liveIntents = (await readIntents(500)).filter((intent) => isKalshiLiveClientOrderId(intent.clientOrderId));
+  const remotePositions = doc.latestReconciliation?.remotePositions ?? [];
+  const pendingOrderUsd = pendingOrderExposureUsd(liveIntents);
+  const remotePositionUsd = doc.latestReconciliation?.remoteExposureUsd ?? remotePositionExposureUsd(remotePositions);
   const latestEvent =
     (await readKalshiOrderbookEvents({
       limit: 1,
@@ -809,10 +832,13 @@ export async function readKalshiLiveStatus(): Promise<KalshiLiveStatus> {
         reconciliationAgeMs > cfg.maxReconciliationAgeMs,
     },
     exposure: {
-      openUsd: openExposureUsd((await readIntents(500)).filter((intent) => isKalshiLiveClientOrderId(intent.clientOrderId))),
+      openUsd: pendingOrderUsd + remotePositionUsd,
+      pendingOrderUsd,
+      remotePositionUsd,
       maxOpenUsd: cfg.maxOpenUsd,
       maxOrderUsd: cfg.maxOrderUsd,
     },
+    remotePositions,
     recentIntents,
     blockers,
   };
@@ -874,7 +900,7 @@ export async function runKalshiLiveTick(): Promise<{
 
   const summary = await readKalshiRlSummary();
   const candidates = buildCandidates(summary, tick);
-  let exposure = openExposureUsd((await readIntents(500)).filter((intent) => isKalshiLiveClientOrderId(intent.clientOrderId)));
+  let exposure = statusBeforeOrders.exposure.openUsd;
   for (const candidate of candidates) {
     if (exposure + candidate.notionalUsd > cfg.maxOpenUsd) {
       skipped.push(await updateIntent({ ...(await upsertIntent(candidate)), status: "skipped", error: "max-open-exposure" }));
