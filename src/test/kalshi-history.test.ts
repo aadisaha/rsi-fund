@@ -119,6 +119,7 @@ describe("kalshi history", () => {
             markets: [
               {
                 ticker: historical ? "KXBTC15M-26MAR291930-30" : "KXBTC15M-26MAY291930-30",
+                open_time: historical ? "2026-03-29T23:15:00Z" : "2026-05-29T23:15:00Z",
                 close_time: historical ? "2026-03-29T23:30:00Z" : "2026-05-29T23:30:00Z",
                 status: historical ? "finalized" : "initialized",
               },
@@ -139,6 +140,7 @@ describe("kalshi history", () => {
       "KXBTC15M-26MAY291930-30",
     ]);
     expect(markets.map((m) => m.source)).toEqual(["historical", "live"]);
+    expect(markets[0].openTs).toBe(Date.parse("2026-03-29T23:15:00Z") / 1000);
   });
 
   it("builds empirical samples once enough minute candles exist", async () => {

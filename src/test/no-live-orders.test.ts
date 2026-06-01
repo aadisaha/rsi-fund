@@ -36,4 +36,23 @@ describe("no live order surface", () => {
       }
     }
   });
+
+  it("keeps Kalshi live order placement isolated to the safety executor", async () => {
+    const root = process.cwd();
+    const files = [
+      "src/lib/kalshi.ts",
+      "src/lib/kalshi-live.ts",
+      "src/app/api/kalshi/live/tick/route.ts",
+      "src/app/api/kalshi/live/reconcile/route.ts",
+      "src/app/api/kalshi/live/kill-switch/route.ts",
+      "src/app/api/cron/kalshi-reconcile/route.ts",
+    ];
+    const matches: string[] = [];
+    for (const file of files) {
+      const source = await readFile(path.join(root, file), "utf8");
+      if (source.includes("/trade-api/v2/portfolio/orders")) matches.push(file);
+    }
+
+    expect(matches).toEqual(["src/lib/kalshi-live.ts"]);
+  });
 });

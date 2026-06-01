@@ -83,6 +83,43 @@ export async function ensurePostgresSchema(): Promise<void> {
 
       create index if not exists quant_job_runs_idempotency_idx
         on quant_job_runs (job_name, idempotency_key);
+
+      create table if not exists quant_kalshi_orderbook_events (
+        event_id text primary key,
+        received_at timestamptz not null,
+        series_ticker text,
+        market_ticker text not null,
+        event jsonb not null
+      );
+
+      create index if not exists quant_kalshi_orderbook_events_series_received_idx
+        on quant_kalshi_orderbook_events (series_ticker, received_at desc);
+
+      create index if not exists quant_kalshi_orderbook_events_market_received_idx
+        on quant_kalshi_orderbook_events (market_ticker, received_at desc);
+
+      create table if not exists quant_kalshi_live_intents (
+        client_order_id text primary key,
+        intent jsonb not null,
+        status text not null,
+        created_at timestamptz not null,
+        updated_at timestamptz not null
+      );
+
+      create index if not exists quant_kalshi_live_intents_status_updated_idx
+        on quant_kalshi_live_intents (status, updated_at desc);
+
+      create table if not exists quant_kalshi_live_reconciliation_runs (
+        run_id text primary key,
+        started_at timestamptz not null,
+        finished_at timestamptz not null,
+        ok boolean not null,
+        mismatch_count integer not null,
+        run jsonb not null
+      );
+
+      create index if not exists quant_kalshi_live_reconciliation_finished_idx
+        on quant_kalshi_live_reconciliation_runs (finished_at desc);
     `);
   })();
   await schemaReady;

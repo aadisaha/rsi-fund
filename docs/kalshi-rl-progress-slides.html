@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kalshi BTC 15M Paper RL Progress</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #090b10;
+        --panel: #11141b;
+        --panel-2: #171b24;
+        --line: rgba(191, 203, 222, 0.18);
+        --text: #f3f6fb;
+        --muted: #a8b2c3;
+        --green: #32d6a2;
+        --blue: #7aa7ff;
+        --yellow: #f0c75e;
+        --red: #ff7a90;
+        --purple: #aa8cff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 10% 8%, rgba(50, 214, 162, 0.16), transparent 32%),
+          radial-gradient(circle at 90% 20%, rgba(122, 167, 255, 0.14), transparent 34%),
+          linear-gradient(135deg, #07090d, #10131a 48%, #080a0f);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(1180px, calc(100vw - 40px));
+        margin: 0 auto;
+        padding: 28px 0 80px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 22px;
+      }
+
+      .eyebrow {
+        color: var(--green);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        margin-top: 8px;
+        font-size: clamp(30px, 4.4vw, 58px);
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      .deck-subtitle {
+        margin-top: 12px;
+        max-width: 780px;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.55;
+      }
+
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        white-space: nowrap;
+      }
+
+      button {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        cursor: pointer;
+        font: inherit;
+        padding: 10px 12px;
+      }
+
+      button:hover {
+        border-color: rgba(50, 214, 162, 0.65);
+      }
+
+      .counter {
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+      }
+
+      .slide {
+        display: none;
+        min-height: 670px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015)),
+          rgba(17, 20, 27, 0.94);
+        box-shadow: 0 24px 100px rgba(0, 0, 0, 0.34);
+        overflow: hidden;
+      }
+
+      .slide.active {
+        display: block;
+      }
+
+      .slide-inner {
+        padding: clamp(28px, 5vw, 58px);
+      }
+
+      .slide h2 {
+        max-width: 900px;
+        font-size: clamp(32px, 4vw, 54px);
+        line-height: 1.03;
+      }
+
+      .slide-lead {
+        margin-top: 18px;
+        max-width: 850px;
+        color: var(--muted);
+        font-size: 19px;
+        line-height: 1.55;
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .cards {
+        margin-top: 34px;
+      }
+
+      .card {
+        min-height: 150px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(8, 11, 16, 0.46);
+        padding: 20px;
+      }
+
+      .card h3 {
+        font-size: 18px;
+      }
+
+      .card p,
+      li {
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      .card p {
+        margin-top: 10px;
+      }
+
+      ul {
+        margin: 14px 0 0;
+        padding-left: 20px;
+      }
+
+      li + li {
+        margin-top: 9px;
+      }
+
+      .metric-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 34px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(8, 11, 16, 0.5);
+        padding: 18px;
+      }
+
+      .metric .label {
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .metric .value {
+        margin-top: 10px;
+        color: var(--text);
+        font-size: 28px;
+        font-weight: 700;
+      }
+
+      .accent-green {
+        color: var(--green);
+      }
+
+      .accent-blue {
+        color: var(--blue);
+      }
+
+      .accent-yellow {
+        color: var(--yellow);
+      }
+
+      .accent-red {
+        color: var(--red);
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 42px;
+      }
+
+      .flow-step {
+        position: relative;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(8, 11, 16, 0.5);
+        padding: 18px;
+        min-height: 150px;
+      }
+
+      .flow-step .num {
+        color: var(--green);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+      }
+
+      .flow-step strong {
+        display: block;
+        margin-top: 12px;
+      }
+
+      .flow-step span {
+        display: block;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .chart-panel {
+        margin-top: 34px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(8, 11, 16, 0.5);
+        padding: 22px;
+      }
+
+      svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .caption {
+        margin-top: 12px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .lineage-list {
+        margin-top: 34px;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .lineage {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(8, 11, 16, 0.48);
+        padding: 18px;
+      }
+
+      .lineage strong {
+        display: block;
+        font-size: 17px;
+      }
+
+      .lineage span {
+        display: block;
+        margin-top: 9px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .footer-note {
+        margin-top: 28px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      code {
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: rgba(0, 0, 0, 0.25);
+        padding: 2px 5px;
+        color: #d9e3f4;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      @media (max-width: 900px) {
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .two,
+        .three,
+        .metric-row,
+        .flow,
+        .lineage-list {
+          grid-template-columns: 1fr;
+        }
+
+        .slide {
+          min-height: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">Paper-only Kalshi BTC 15M RL</p>
+          <h1>Progress Review</h1>
+          <p class="deck-subtitle">
+            What we built, what the agents are showing us, and why the next frontier is learning endgame behavior
+            instead of hard-coding it away.
+          </p>
+        </div>
+        <div class="controls" aria-label="Slide controls">
+          <button type="button" id="prev">Prev</button>
+          <span class="counter" id="counter">1 / 9</span>
+          <button type="button" id="next">Next</button>
+        </div>
+      </header>
+
+      <section class="slide active">
+        <div class="slide-inner">
+          <p class="eyebrow">The short version</p>
+          <h2>We moved from data capture to a live paper-learning cockpit.</h2>
+          <p class="slide-lead">
+            The system now watches Kalshi BTC 15-minute markets, runs paper genetic policies, tracks live open
+            exposure, scores generations, and shows agent behavior in a dedicated <code>/rl</code> dashboard.
+          </p>
+          <div class="metric-row">
+            <div class="metric">
+              <p class="label">Market</p>
+              <p class="value">KXBTC15M</p>
+            </div>
+            <div class="metric">
+              <p class="label">Mode</p>
+              <p class="value">Paper</p>
+            </div>
+            <div class="metric">
+              <p class="label">Refresh</p>
+              <p class="value">1s</p>
+            </div>
+            <div class="metric">
+              <p class="label">Learning cadence</p>
+              <p class="value">5m</p>
+            </div>
+          </div>
+          <p class="footer-note">
+            No live Kalshi order route has been added. This is paper-shadow research infrastructure.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <p class="eyebrow">System architecture</p>
+          <h2>The loop is now visible end to end.</h2>
+          <div class="flow">
+            <div class="flow-step">
+              <p class="num">01</p>
+              <strong>Capture</strong>
+              <span>Live screen/orderbook ticks are normalized into local JSONL events.</span>
+            </div>
+            <div class="flow-step">
+              <p class="num">02</p>
+              <strong>Simulate</strong>
+              <span>Paper fills are priced from current yes/no markets with spread and exposure constraints.</span>
+            </div>
+            <div class="flow-step">
+              <p class="num">03</p>
+              <strong>Score</strong>
+              <span>Policies are ranked by PnL-dominant rewards and risk penalties.</span>
+            </div>
+            <div class="flow-step">
+              <p class="num">04</p>
+              <strong>Evolve</strong>
+              <span>Genetic lineages spawn child policies and deprecate weak branches.</span>
+            </div>
+            <div class="flow-step">
+              <p class="num">05</p>
+              <strong>Inspect</strong>
+              <span>The cockpit shows positions, lineages, returns, and PnL paths.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <p class="eyebrow">Data and execution surfaces</p>
+          <h2>The local machinery is in place.</h2>
+          <div class="grid two cards">
+            <div class="card">
+              <h3>Data path</h3>
+              <p>
+                Kalshi ticks are appended under <code>.data/kalshi-orderbook</code>, while slower historical context
+                remains under <code>.data/kalshi-history</code>.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Paper simulator</h3>
+              <p>
+                Agents can enter, hold, mark, and resolve paper positions with bankroll, market, and open-exposure
+                limits.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Genetic trainer</h3>
+              <p>
+                Compact rule genomes evolve around thresholds, time-to-close bands, spreads, depth, stop-loss,
+                take-profit, and sizing.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Daemon scripts</h3>
+              <p>
+                <code>kalshi:rl-daemon</code> and <code>kalshi:pretrained-rl-molly-daemon</code> keep the paper loop
+                moving.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <p class="eyebrow">Dashboard</p>
+          <h2>The RL cockpit became an operator surface, not just a log viewer.</h2>
+          <div class="grid three cards">
+            <div class="card">
+              <h3>Market state</h3>
+              <p>Active market ticker, target, current quote, chance, and yes/no prices update in the RL tab.</p>
+            </div>
+            <div class="card">
+              <h3>Agent table</h3>
+              <p>Live agents are sortable by trades, PnL, reward, returns, open exposure, and recent action.</p>
+            </div>
+            <div class="card">
+              <h3>Open positions</h3>
+              <p>Open side, contracts, amount paid, mark value, and current PnL are visible above the live table.</p>
+            </div>
+            <div class="card">
+              <h3>Performance accounting</h3>
+              <p>Return on bankroll, return on risk, money gained, money lost, and wins/losses are tracked.</p>
+            </div>
+            <div class="card">
+              <h3>Lineage names</h3>
+              <p>First names vary by agent; last names indicate family. Hover text reveals parentage and children.</p>
+            </div>
+            <div class="card">
+              <h3>PnL graph</h3>
+              <p>All known agent lines can be plotted, including deprecated agents, without flooding the page.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <p class="eyebrow">Pretrained benchmark</p>
+          <h2>Molly is now a live paper-shadow family.</h2>
+          <p class="slide-lead">
+            The pretrained RL sidecar is isolated from the genetic champion files, but its Molly agents now appear in
+            the same cockpit and keep refreshing through a daemon.
+          </p>
+          <div class="grid two cards">
+            <div class="card">
+              <h3>Molly family</h3>
+              <p>Molly Parent plus Ada, Grace, Hedy, Katherine, and Joan run against the latest live event window.</p>
+            </div>
+            <div class="card">
+              <h3>Paper only</h3>
+              <p>Signals can create paper-shadow positions, but no live broker or Kalshi order route is called.</p>
+            </div>
+            <div class="card">
+              <h3>Daemonized</h3>
+              <p><code>npm run kalshi:pretrained-rl-molly-daemon</code> keeps Molly from going stale.</p>
+            </div>
+            <div class="card">
+              <h3>Benchmark role</h3>
+              <p>Molly gives the genetic system a pretrained family to compare against without replacing it.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <p class="eyebrow">What the agents taught us</p>
+          <h2>The newest failure mode is endgame convexity.</h2>
+          <p class="slide-lead">
+            The graph showed agents chugging along, then collapsing at the live edge. The saved generations were still
+            positive; the collapse came from current open exposure being marked near binary certainty.
+          </p>
+          <div class="chart-panel">
+            <svg viewBox="0 0 1000 300" role="img" aria-label="Stylized PnL chart with late collapse">
+              <line x1="42" y1="246" x2="960" y2="246" stroke="rgba(191,203,222,0.35)" />
+              <line x1="42" y1="40" x2="42" y2="246" stroke="rgba(191,203,222,0.35)" />
+              <path d="M55 178 C130 175 168 160 225 164 S330 142 385 156 S480 150 540 134 S650 142 710 126 S815 118 885 86 S930 122 958 238"
+                fill="none" stroke="#f0c75e" stroke-width="7" stroke-linecap="round" />
+              <path d="M55 190 C145 178 210 174 285 158 S390 160 468 150 S575 144 650 132 S765 126 870 118 S926 128 960 258"
+                fill="none" stroke="#32d6a2" stroke-width="5" stroke-linecap="round" opacity="0.9" />
+              <path d="M55 188 C160 200 250 172 348 166 S510 160 615 150 S730 130 844 120 S925 138 960 276"
+                fill="none" stroke="#7aa7ff" stroke-width="5" stroke-linecap="round" opacity="0.85" />
+              <circle cx="930" cy="126" r="7" fill="#ff7a90" />
+              <text x="650" y="52" fill="#a8b2c3" font-size="24">Healthy logged generations</text>
+              <text x="720" y="240" fill="#ff7a90" font-size="24">Live mark shock near close</text>
+            </svg>
+            <p class="caption">
+              The live edge is not just another historical point. It includes current open positions marked against the
+              latest binary market price.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <p class="eyebrow">Current diagnosis</p>
+          <h2>The agents learned mid-window trading before they learned the final minute.</h2>
+          <div class="grid two cards">
+            <div class="card">
+              <h3>What looks good</h3>
+              <ul>
+                <li>Recent saved generations still had positive best PnL.</li>
+                <li>Agents are entering trades and creating useful training data.</li>
+                <li>Lineages are differentiating enough to compare behavior.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>What is fragile</h3>
+              <ul>
+                <li>Open exposure can be highly correlated.</li>
+                <li>The wrong side collapses quickly near settlement.</li>
+                <li>Current rewards do not yet isolate endgame discipline.</li>
+              </ul>
+            </div>
+          </div>
+          <p class="footer-note">
+            This is a good learning problem, not just a bug to patch away. The next design should make endgame behavior
+            learnable.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <p class="eyebrow">Next experiment family</p>
+          <h2>Let lineages specialize in endgame styles.</h2>
+          <div class="lineage-list">
+            <div class="lineage">
+              <strong class="accent-green">Closer</strong>
+              <span>Exits early unless edge is huge.</span>
+            </div>
+            <div class="lineage">
+              <strong class="accent-blue">Sprinter</strong>
+              <span>Trades only in the last 2 minutes.</span>
+            </div>
+            <div class="lineage">
+              <strong class="accent-yellow">Hedger</strong>
+              <span>Cuts exposure when price crosses against it.</span>
+            </div>
+            <div class="lineage">
+              <strong class="accent-red">Conviction</strong>
+              <span>Holds through close only with strong signal.</span>
+            </div>
+            <div class="lineage">
+              <strong class="accent-blue">Scalper</strong>
+              <span>Closes before the final 60 seconds.</span>
+            </div>
+          </div>
+          <p class="footer-note">
+            The intent is not to hard-code one answer. It is to let different risk personalities compete under the same
+            paper-only scoring regime.
+          </p>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <p class="eyebrow">Next build steps</p>
+          <h2>The next version should measure the endgame directly.</h2>
+          <div class="grid two cards">
+            <div class="card">
+              <h3>Split the PnL graph</h3>
+              <p>Show realized PnL separately from live marked PnL so a current open shock does not obscure history.</p>
+            </div>
+            <div class="card">
+              <h3>Add endgame features</h3>
+              <p>Seconds to close, target distance, distance velocity, quote acceleration, and price buckets.</p>
+            </div>
+            <div class="card">
+              <h3>Reward discipline</h3>
+              <p>Penalize wrong-side exposure near close and reward profitable late conviction only when it wins.</p>
+            </div>
+            <div class="card">
+              <h3>Protect diversity</h3>
+              <p>Run endgame lineages without deleting existing strong families, Molly, or baseline genetic lines.</p>
+            </div>
+          </div>
+          <p class="footer-note">
+            Bottom line: the infrastructure is now good enough that the interesting problem is policy behavior.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const slides = Array.from(document.querySelectorAll(".slide"));
+      const counter = document.getElementById("counter");
+      let index = 0;
+
+      function render() {
+        slides.forEach((slide, i) => slide.classList.toggle("active", i === index));
+        counter.textContent = `${index + 1} / ${slides.length}`;
+      }
+
+      function move(delta) {
+        index = (index + delta + slides.length) % slides.length;
+        render();
+      }
+
+      document.getElementById("prev").addEventListener("click", () => move(-1));
+      document.getElementById("next").addEventListener("click", () => move(1));
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowRight" || event.key === " ") move(1);
+        if (event.key === "ArrowLeft") move(-1);
+      });
+    </script>
+  </body>
+</html>

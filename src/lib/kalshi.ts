@@ -108,6 +108,41 @@ async function kalshiGet<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+export async function kalshiApiGet<T>(path: string): Promise<T> {
+  return kalshiGet<T>(path);
+}
+
+export async function kalshiApiPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`${kalshiBaseUrl()}${path}`, {
+    method: "POST",
+    headers: kalshiSignedHeaders("POST", path),
+    cache: "no-store",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const error = new Error(`Kalshi write failed (${res.status}): ${text.slice(0, 240)}`);
+    Object.assign(error, { status: res.status, body: text });
+    throw error;
+  }
+  return (await res.json()) as T;
+}
+
+export async function kalshiApiDelete<T>(path: string): Promise<T> {
+  const res = await fetch(`${kalshiBaseUrl()}${path}`, {
+    method: "DELETE",
+    headers: kalshiSignedHeaders("DELETE", path),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const error = new Error(`Kalshi delete failed (${res.status}): ${text.slice(0, 240)}`);
+    Object.assign(error, { status: res.status, body: text });
+    throw error;
+  }
+  return (await res.json()) as T;
+}
+
 export async function fetchKalshiSnapshot(): Promise<KalshiSnapshot> {
   if (!credentials()) {
     return { ok: false, mode: "unconfigured", message: "Kalshi is not configured." };

@@ -50,6 +50,7 @@ type RawCandlesticksResponse = {
 
 type RawMarket = {
   ticker?: string;
+  open_time?: string | null;
   close_time?: string | null;
   expiration_time?: string | null;
   settlement_ts?: string | null;
@@ -123,6 +124,7 @@ export type KalshiBackfillResult = {
 };
 
 export type KalshiDiscoveredMarket = KalshiHistoryMarketRequest & {
+  openTs: number | null;
   closeTs: number | null;
   status: string | null;
 };
@@ -349,12 +351,14 @@ export async function discoverKalshiMarkets(args: {
             parseTimeSeconds(raw.settlement_ts) ??
             parseTimeSeconds(raw.close_time) ??
             parseTimeSeconds(raw.expiration_time);
+          const openTs = parseTimeSeconds(raw.open_time);
           if (closeTs != null && (closeTs < args.startTs || closeTs > args.endTs)) continue;
           const key = `${source}:${raw.ticker}`;
           markets.set(key, {
             marketTicker: raw.ticker,
             seriesTicker,
             source,
+            openTs,
             closeTs,
             status: raw.status ?? null,
           });
@@ -371,6 +375,26 @@ export async function discoverKalshiMarkets(args: {
     if (at !== bt) return at - bt;
     return a.marketTicker.localeCompare(b.marketTicker);
   });
+}
+
+function marketFetchWindow(args: {
+  market: KalshiHistoryMarketRequest | KalshiDiscoveredMarket;
+  requestStartTs: number;
+  requestEndTs: number;
+  periodInterval: KalshiPeriodInterval;
+}): { startTs: number; endTs: number } {
+  const discovered = args.market as Partial<KalshiDiscoveredMarket>;
+  if (typeof discovered.closeTs === "number" && Number.isFinite(discovered.closeTs)) {
+    const paddedOpen =
+      typeof discovered.openTs === "number" && Number.isFinite(discovered.openTs)
+        ? discovered.openTs - args.periodInterval * 60
+        : discovered.closeTs - 30 * 60;
+    return {
+      startTs: Math.max(args.requestStartTs, paddedOpen),
+      endTs: Math.min(args.requestEndTs, discovered.closeTs),
+    };
+  }
+  return { startTs: args.requestStartTs, endTs: args.requestEndTs };
 }
 
 async function readJsonlGz(file: string): Promise<KalshiCandle[]> {
@@ -539,10 +563,16 @@ export async function backfillKalshiHistory(request: KalshiBackfillRequest): Pro
 
   for (const market of markets) {
     const source = market.source ?? (market.seriesTicker ? "live" : "historical");
-    let cursor = request.startTs;
+    const window = marketFetchWindow({
+      market,
+      requestStartTs: request.startTs,
+      requestEndTs: request.endTs,
+      periodInterval,
+    });
+    let cursor = window.startTs;
     const fetched: KalshiCandle[] = [];
-    while (cursor <= request.endTs) {
-      const chunkEnd = Math.min(request.endTs, cursor + chunkMinutes * 60 - periodInterval * 60);
+    while (cursor <= window.endTs) {
+      const chunkEnd = Math.min(window.endTs, cursor + chunkMinutes * 60 - periodInterval * 60);
       const candles = await fetchKalshiCandlesticks({
         marketTicker: market.marketTicker,
         seriesTicker: market.seriesTicker,
@@ -690,8 +720,25 @@ export async function buildKalshiTrainingEvidence(options: {
   const markets: string[] = [];
   for (const [market, marketCandles] of byMarket) {
     const sorted = marketCandles.sort((a, b) => a.endPeriodTs - b.endPeriodTs);
-    if (sorted.length <= horizonMinutes) continue;
+    if (sorted.length < 2) continue;
     markets.push(market);
+
+    const first = sorted.find((c) => c.price.close != null);
+    const last = [...sorted].reverse().find((c) => c.price.close != null);
+    if (first?.price.close != null && last?.price.close != null && first.endPeriodTs < last.endPeriodTs) {
+      const spread =
+        first.yesAsk.close != null && first.yesBid.close != null
+          ? Math.max(0, first.yesAsk.close - first.yesBid.close)
+          : 0.02;
+      const drawdown = Math.min(
+        0,
+        ...sorted.map((c) => (c.price.close == null ? 0 : pctReturn(first.price.close!, c.price.close))),
+      );
+      const move = pctReturn(first.price.close, last.price.close);
+      createSamples.push(Math.max(0, move - spread));
+      decaySamples.push(Math.max(0, spread + Math.abs(drawdown)));
+    }
+
     for (let i = 0; i + horizonMinutes < sorted.length; i += 1) {
       const now = sorted[i];
       const future = sorted[i + horizonMinutes];

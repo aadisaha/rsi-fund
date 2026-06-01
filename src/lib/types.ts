@@ -45,7 +45,7 @@ export type ForecastEvent = {
 export type PaperActionEvent = {
   type: "paper_action";
   action: "proposal" | "simulated_fill" | "rejected";
-  channel: ChannelId | "portfolio";
+  channel: ChannelId | "portfolio" | "pretrained-rl-shadow";
   notionalUsd: number;
   reason: string;
   payload: Record<string, unknown>;
@@ -203,6 +203,9 @@ export type DashboardPayload = {
     models: LedgerRecord[];
     cycles: LedgerRecord[];
     cache: MarketCacheSummary;
+    marketSeries: MarketLiveSeries[];
+    kalshiRl?: KalshiRlSummary;
+    kalshiPretrainedRl?: KalshiPretrainedRlSummary;
     notes: string[];
   };
 };
@@ -233,6 +236,483 @@ export type MarketCacheSummary = {
     start: string | null;
     end: string | null;
   }>;
+};
+
+export type MarketLiveSeries = {
+  symbol: string;
+  timeframe: "1Day" | "15Min";
+  source: MarketCacheEntry["source"];
+  fetchedAt: string;
+  bars: number;
+  start: string | null;
+  end: string | null;
+  points: Array<{
+    at: string;
+    close: number;
+  }>;
+  forecast: {
+    modelId: string;
+    generatedAt: string;
+    expectedReturn: number;
+    annualizedVol: number;
+    confidence: number;
+    score: number;
+    startPrice: number;
+    targetPrice: number;
+    horizonBars: number;
+  } | null;
+};
+
+export type KalshiOrderbookEventType =
+  | "ticker"
+  | "trade"
+  | "orderbook_snapshot"
+  | "orderbook_delta"
+  | "market_lifecycle"
+  | "settlement"
+  | "rest_snapshot";
+
+export type KalshiOrderbookEvent = {
+  receivedAt: string;
+  marketTicker: string;
+  seriesTicker: string | null;
+  eventType: KalshiOrderbookEventType;
+  windowOpenTime: string | null;
+  windowCloseTime: string | null;
+  yesBid: number | null;
+  yesAsk: number | null;
+  noBid: number | null;
+  noAsk: number | null;
+  spread: number | null;
+  yesDepth: number | null;
+  noDepth: number | null;
+  tradedPrice: number | null;
+  tradedQuantity: number | null;
+  settlementValue: number | null;
+  raw?: Record<string, unknown>;
+};
+
+export type KalshiPaperRlTrade = {
+  tradeId: string;
+  marketTicker: string;
+  side: "yes" | "no";
+  openedAt: string;
+  closedAt: string | null;
+  entryPrice: number;
+  exitPrice: number | null;
+  contracts: number;
+  notionalUsd: number;
+  pnlUsd: number;
+  reason: string;
+};
+
+export type KalshiPaperRlOpenPosition = {
+  marketTicker: string;
+  side: "yes" | "no" | "flat";
+  yesContracts: number;
+  noContracts: number;
+  netContracts: number;
+  costBasisUsd: number;
+  markValueUsd: number;
+  unrealizedPnlUsd: number;
+  averageEntryPrice: number;
+  markPrice: number;
+  openedAt: string;
+  markedAt: string;
+  secondsToClose: number | null;
+};
+
+export type KalshiPaperRlPerformance = {
+  bankrollUsd: number;
+  riskedUsd: number;
+  netPnlUsd: number;
+  grossGainedUsd: number;
+  grossLostUsd: number;
+  returnOnBankroll: number;
+  returnOnRisk: number;
+  betsWon: number;
+  betsLost: number;
+};
+
+export type GeneticPolicyGenome = {
+  genomeId: string;
+  parentGenomeIds?: string[];
+  generation?: number;
+  entryThreshold: number;
+  exitThreshold: number;
+  maxHoldSeconds: number;
+  momentumWindow: number;
+  spreadCap: number;
+  depthFloor: number;
+  minSecondsToClose: number;
+  maxSecondsToClose: number;
+  stopLoss: number;
+  takeProfit: number;
+  positionSizeFraction: number;
+};
+
+export type KalshiRlChampion = {
+  genome: GeneticPolicyGenome;
+  promotedAt: string;
+  generation: number;
+  reward: number;
+  pnlUsd: number;
+  trades: number;
+  drawdownUsd: number;
+  sampleMarkets: string[];
+};
+
+export type KalshiRlEliteTag =
+  | "validated"
+  | "profit-20"
+  | "profitable"
+  | "interesting"
+  | "champion"
+  | "historical-top";
+
+export type KalshiRlAgentTier = "testing" | "validated";
+
+export type KalshiRlEliteArchiveEntry = {
+  genome: GeneticPolicyGenome;
+  tags: KalshiRlEliteTag[];
+  firstSeenAt: string;
+  firstTaggedAt: string;
+  firstValidatedAt?: string;
+  firstValidatedRunId?: string;
+  validationPnlUsd?: number;
+  lastScoredAt: string;
+  firstRunId: string;
+  lastRunId: string;
+  bestRunId: string;
+  bestPnlUsd: number;
+  latestPnlUsd: number;
+  bestReward: number;
+  latestReward: number;
+  trades: number;
+  generationsTracked: number;
+  lastStatus: "champion" | "candidate" | "exploring" | "deprecated" | "archived";
+  archivedReason: string;
+  tier: KalshiRlAgentTier;
+};
+
+export type KalshiRlGenerationStats = {
+  runId: string | null;
+  generatedAt: string | null;
+  agents: number;
+  totalPnlUsd: number;
+  averagePnlUsd: number;
+  bestPnlUsd: number | null;
+  worstPnlUsd: number | null;
+  totalTrades: number;
+  returnOnRisk: number | null;
+  betsWon: number;
+  betsLost: number;
+  winRate: number | null;
+};
+
+export type KalshiRlGenerationComparison = {
+  current: KalshiRlGenerationStats;
+  previous: KalshiRlGenerationStats | null;
+  delta: {
+    totalPnlUsd: number | null;
+    averagePnlUsd: number | null;
+    returnOnRisk: number | null;
+    winRate: number | null;
+    agents: number | null;
+  };
+  eliteArchive: {
+    total: number;
+    validated: number;
+    profit20: number;
+    champions: number;
+    scoredLatest: number;
+    averageLatestPnlUsd: number | null;
+    bestLatestPnlUsd: number | null;
+  };
+  topElites: Array<{
+    genomeId: string;
+    tier: KalshiRlAgentTier;
+    tags: KalshiRlEliteTag[];
+    bestPnlUsd: number;
+    latestPnlUsd: number;
+    latestReward: number;
+    trades: number;
+    generationsTracked: number;
+    lastScoredAt: string;
+  }>;
+  sameGenomeDeltas: Array<{
+    genomeId: string;
+    currentPnlUsd: number;
+    previousPnlUsd: number;
+    deltaPnlUsd: number;
+    currentTrades: number;
+    previousTrades: number;
+  }>;
+};
+
+export type GeneticTrainingRun = {
+  runId: string;
+  generatedAt: string;
+  seriesTicker: string;
+  populationSize: number;
+  evaluatedMarkets: string[];
+  eventCount: number;
+  best: KalshiRlChampion | null;
+  previousChampion: KalshiRlChampion | null;
+  champion: KalshiRlChampion | null;
+  promoted: boolean;
+  baselineReward: number;
+  leaderboard: Array<{
+    genome: GeneticPolicyGenome;
+    status: "champion" | "candidate" | "exploring" | "deprecated" | "archived";
+    parentGenomeIds: string[];
+    tier?: KalshiRlAgentTier;
+    contributesToPerformance?: boolean;
+    validationAt?: string;
+    validationRunId?: string;
+    validationPnlUsd?: number;
+    isValidationRun?: boolean;
+    eliteTags?: KalshiRlEliteTag[];
+    archivedReason?: string;
+    reward: number;
+    pnlUsd: number;
+    trades: number;
+    drawdownUsd: number;
+    pnlLast4?: number;
+    pnlLast10?: number;
+    pnlLast20m?: number;
+    pnlLast50m?: number;
+    generationsSeen?: number;
+    deprecatedReason?: string;
+    recentTrades?: KalshiPaperRlTrade[];
+    openPositions?: KalshiPaperRlOpenPosition[];
+    performance?: KalshiPaperRlPerformance;
+  }>;
+  paper: {
+    bankrollUsd: number;
+    maxMarketUsd: number;
+    maxOpenUsd: number;
+  };
+  notes: string[];
+};
+
+export type KalshiRlSummary = {
+  enabled: boolean;
+  seriesTicker: string;
+  bankrollUsd: number;
+  maxMarketUsd: number;
+  maxOpenUsd: number;
+  recentEvents: number;
+  latestEventAt: string | null;
+  latestEvent: KalshiOrderbookEvent | null;
+  recentQuoteEvents: KalshiOrderbookEvent[];
+  latestMarketUrl: string | null;
+  liveLeaderboard?: GeneticTrainingRun["leaderboard"];
+  eliteArchive?: KalshiRlEliteArchiveEntry[];
+  generationComparison?: KalshiRlGenerationComparison;
+  champion: KalshiRlChampion | null;
+  lastRun: GeneticTrainingRun | null;
+  runHistory: GeneticTrainingRun[];
+};
+
+export type PreTrainingAgentGenome = {
+  genomeId: string;
+  generation: number;
+  parentGenomeIds: string[];
+  family: "momentum" | "reversal" | "breakout" | "risk-scout";
+  lookbackMinutes: number;
+  entryEdge: number;
+  exitEdge: number;
+  maxHoldMinutes: number;
+  maxSpread: number;
+  minVolume: number;
+  stopLoss: number;
+  takeProfit: number;
+  allocationPct: number;
+  riskPenalty: number;
+};
+
+export type PreTrainingPaperTrade = {
+  tradeId: string;
+  marketTicker: string;
+  side: "yes" | "no";
+  openedAt: string;
+  closedAt: string;
+  entryPrice: number;
+  exitPrice: number;
+  contracts: number;
+  notionalUsd: number;
+  pnlUsd: number;
+  reason: string;
+};
+
+export type PreTrainingAgentScore = {
+  genome: PreTrainingAgentGenome;
+  reward: number;
+  pnlUsd: number;
+  trades: number;
+  winRate: number | null;
+  maxDrawdownUsd: number;
+  returnOnRisk: number | null;
+  familyRank: number;
+  trainReward?: number;
+  validationReward?: number;
+  recentTrades?: PreTrainingPaperTrade[];
+};
+
+export type PreTrainingCycleSummary = {
+  cycle: number;
+  populationSize: number;
+  bestGenomeId: string | null;
+  bestReward: number | null;
+  averageReward: number;
+  averagePnlUsd: number;
+  tradedAgents: number;
+  mutationRate: number;
+  eliteCount: number;
+  diversity: number;
+};
+
+export type PreTrainingRun = {
+  runId: string;
+  generatedAt: string;
+  seriesTicker: string;
+  mode: "historical-genetic";
+  cyclesRequested: number;
+  populationSize: number;
+  candleCount: number;
+  trainMarkets: string[];
+  validationMarkets: string[];
+  champion: PreTrainingAgentScore | null;
+  previousChampion: PreTrainingAgentScore | null;
+  promoted: boolean;
+  cycles: PreTrainingCycleSummary[];
+  leaderboard: PreTrainingAgentScore[];
+  notes: string[];
+};
+
+export type PreTrainingSummary = {
+  enabled: boolean;
+  seriesTicker: string;
+  availableMarkets: number;
+  availableCandles: number;
+  lastRun: PreTrainingRun | null;
+  champion: PreTrainingAgentScore | null;
+  runHistory: PreTrainingRun[];
+};
+
+export type KalshiPretrainedRlMetrics = {
+  samples: number;
+  avgReward: number;
+  totalReward: number;
+  trades: number;
+  actionCounts: Record<string, number>;
+};
+
+export type KalshiPretrainedRlSignal = {
+  ok: boolean;
+  modelId?: string;
+  generatedAt: string;
+  seriesTicker?: string;
+  marketTicker?: string;
+  observedAt?: string;
+  mode?: "paper-shadow";
+  lineage?: string;
+  action?: string;
+  side?: "yes" | "no" | "flat";
+  size?: "small" | "full" | "none";
+  confidence?: number;
+  logits?: Record<string, number>;
+  inputWindowHash?: string;
+  entryMark?: number;
+  futureMarkForBacktest?: number;
+  reason?: string;
+};
+
+export type KalshiMollyAgentSignal = {
+  agentId: string;
+  displayName: string;
+  familyName: "Molly";
+  lineage: "molly";
+  parentAgentId?: string | null;
+  generation?: number;
+  generatedAt: string;
+  marketTicker: string | null;
+  modelId: string | null;
+  action: string;
+  side: "yes" | "no" | "flat";
+  size: "small" | "full" | "none";
+  confidence: number;
+  minConfidence: number;
+  status: "paper_live_trade" | "paper_hold" | "waiting";
+  notionalUsd: number;
+  reward?: number;
+  pnlUsd?: number;
+  trades?: number;
+  openPositions?: KalshiPaperRlOpenPosition[];
+  recentTrades?: KalshiPaperRlTrade[];
+  performance?: KalshiPaperRlPerformance;
+  reason: string;
+};
+
+export type KalshiMollyLineRun = {
+  runId: string;
+  generatedAt: string;
+  mode: "paper-live-shadow";
+  lineage: "molly";
+  seriesTicker: string;
+  recentEvents: number;
+  baseSignal: KalshiPretrainedRlSignal | null;
+  agents: KalshiMollyAgentSignal[];
+  notes: string[];
+};
+
+export type KalshiPretrainedRlTrainingRun = {
+  runId: string;
+  generatedAt: string;
+  seriesTicker: string;
+  device: "cpu";
+  enabled: boolean;
+  artifactDir: string;
+  historyDir: string;
+  candles: number;
+  samples: Record<"train" | "validation" | "test", number>;
+  markets: Record<"train" | "validation" | "test", number>;
+  featureNames: string[];
+  actionNames: string[];
+  model: {
+    dModel: number;
+    heads: number;
+    layers: number;
+    sequenceMinutes: number;
+  };
+  metrics: Record<"train" | "validation" | "test", KalshiPretrainedRlMetrics>;
+  promoted: boolean;
+  previousRunId?: string;
+  latestSignal?: KalshiPretrainedRlSignal;
+  notes: string[];
+};
+
+export type KalshiPretrainedRlModelCard = {
+  modelId: string;
+  generatedAt: string;
+  seriesTicker: string;
+  stage: "pretrained" | "rl-candidate" | "champion";
+  metrics?: Record<"train" | "validation" | "test", KalshiPretrainedRlMetrics>;
+  pretrainLossLast?: number | null;
+  rlLossLast?: number | null;
+  promotedAt?: string;
+};
+
+export type KalshiPretrainedRlSummary = {
+  enabled: boolean;
+  seriesTicker: string;
+  artifactDir: string;
+  lastRun: KalshiPretrainedRlTrainingRun | null;
+  champion: KalshiPretrainedRlModelCard | null;
+  latestSignal: KalshiPretrainedRlSignal | null;
+  mollyLine?: KalshiMollyLineRun | null;
+  runHistory: KalshiPretrainedRlTrainingRun[];
 };
 
 export type PaperCycleForecast = {
@@ -276,6 +756,37 @@ export type PaperCycleRun = {
   }>;
   rejected: boolean;
   reason: string;
+};
+
+export type BacktestModelResult = {
+  modelId: string;
+  label: string;
+  observations: number;
+  trainWindowBars: number;
+  horizonBars: number;
+  directionalAccuracy: number | null;
+  rmseBps: number | null;
+  maeBps: number | null;
+  strategyReturnPct: number | null;
+  buyHoldReturnPct: number | null;
+  maxDrawdownPct: number | null;
+  sharpeProxy: number | null;
+  lastPredictionPct: number | null;
+  lastTargetPrice: number | null;
+  note: string;
+};
+
+export type ModelComparisonBacktest = {
+  symbol: string;
+  timeframe: "1Day" | "15Min";
+  generatedAt: string;
+  start: string | null;
+  end: string | null;
+  observations: number;
+  horizonBars: number;
+  bestModelId: string | null;
+  results: BacktestModelResult[];
+  note: string;
 };
 
 export type PaperCycleRiskLimitName =

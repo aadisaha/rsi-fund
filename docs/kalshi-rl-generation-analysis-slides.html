@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kalshi RL Generation Drift Analysis</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #090b10;
+        --panel: #11141b;
+        --panel-2: #171b24;
+        --line: rgba(191, 203, 222, 0.18);
+        --text: #f3f6fb;
+        --muted: #a8b2c3;
+        --green: #32d6a2;
+        --blue: #7aa7ff;
+        --yellow: #f0c75e;
+        --red: #ff7a90;
+        --purple: #aa8cff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #07090d, #10131a 48%, #080a0f);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      main { width: min(1240px, calc(100vw - 40px)); margin: 0 auto; padding: 28px 0 80px; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+      h1, h2, h3, p { margin: 0; }
+      h1 { margin-top: 8px; font-size: clamp(32px, 4.8vw, 64px); line-height: .98; letter-spacing: 0; }
+      h2 { font-size: clamp(30px, 4vw, 52px); line-height: 1.03; letter-spacing: 0; }
+      .eyebrow { color: var(--green); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+      .subtitle, .lead { color: var(--muted); font-size: 18px; line-height: 1.55; max-width: 900px; margin-top: 14px; }
+      .controls { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+      button { border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.04); color: var(--text); cursor: pointer; font: inherit; padding: 10px 12px; }
+      button:hover { border-color: rgba(50,214,162,.65); }
+      .counter { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+      .slide { display: none; min-height: 720px; border: 1px solid var(--line); border-radius: 10px; background: linear-gradient(135deg, rgba(255,255,255,.045), rgba(255,255,255,.015)), rgba(17,20,27,.96); box-shadow: 0 24px 100px rgba(0,0,0,.34); overflow: hidden; }
+      .slide.active { display: block; }
+      .slide-inner { padding: clamp(28px, 5vw, 58px); }
+      .grid { display: grid; gap: 16px; }
+      .two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .cards { margin-top: 34px; }
+      .card, .metric { border: 1px solid var(--line); border-radius: 8px; background: rgba(8,11,16,.48); padding: 20px; }
+      .card h3 { font-size: 18px; }
+      .card p, li { color: var(--muted); font-size: 15px; line-height: 1.5; }
+      .card p { margin-top: 10px; }
+      ul { margin: 14px 0 0; padding-left: 20px; }
+      li + li { margin-top: 9px; }
+      .metric-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 34px; }
+      .metric .label { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; text-transform: uppercase; }
+      .metric .value { margin-top: 10px; font-size: 28px; font-weight: 800; }
+      .good { color: var(--green); }
+      .bad { color: var(--red); }
+      .yellow { color: var(--yellow); }
+      .chart-wrap { margin-top: 26px; border: 1px solid var(--line); border-radius: 8px; background: rgba(5,7,11,.36); padding: 16px; }
+      svg { display: block; width: 100%; height: auto; overflow: visible; }
+      .legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 13px; margin-top: 10px; }
+      .legend span { display: inline-flex; align-items: center; gap: 7px; }
+      .legend i { width: 18px; height: 3px; border-radius: 99px; display: inline-block; }
+      table { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 14px; }
+      th, td { padding: 11px 12px; border-bottom: 1px solid rgba(191,203,222,.14); text-align: left; vertical-align: middle; }
+      th { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; text-transform: uppercase; }
+      td { color: #dfe6f2; }
+      .role { display: inline-flex; min-width: 74px; justify-content: center; border-radius: 999px; padding: 5px 9px; border: 1px solid rgba(255,255,255,.12); font-size: 12px; font-weight: 800; text-transform: uppercase; }
+      .anchor { background: rgba(122,167,255,.14); color: #9dbbff; }
+      .spark { background: rgba(50,214,162,.14); color: #6ee6bd; }
+      .early { background: rgba(255,122,144,.14); color: #ff9aac; }
+      .stride { background: rgba(240,199,94,.14); color: #f0d27a; }
+      .pulse, .scout, .general { background: rgba(170,140,255,.13); color: #bea9ff; }
+      .callout { margin-top: 28px; padding: 22px; border-left: 4px solid var(--green); background: rgba(50,214,162,.08); color: #dffcf3; line-height: 1.55; }
+      .small { color: var(--muted); font-size: 13px; line-height: 1.5; margin-top: 14px; }
+      @media (max-width: 860px) {
+        header { align-items: flex-start; flex-direction: column; }
+        .two, .three, .metric-row { grid-template-columns: 1fr; }
+        .slide { min-height: auto; }
+      }
+      @media print {
+        body { background: #090b10; }
+        header { display: none; }
+        main { width: 100%; padding: 0; }
+        .slide { display: block; break-after: page; min-height: 100vh; border: 0; border-radius: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <div class="eyebrow">Kalshi BTC 15M · Paper Genetic RL</div>
+          <h1>Generation Drift Analysis</h1>
+          <p class="subtitle">Static slide report generated from <code>.data/kalshi-rl-run-history.json</code>. Scope: general genetic agents only; Molly and specialized role agents are excluded.</p>
+        </div>
+        <div class="controls">
+          <button id="prev">Prev</button>
+          <span class="counter"><span id="current">1</span> / <span id="total">7</span></span>
+          <button id="next">Next</button>
+        </div>
+      </header>
+
+      <section class="slide active">
+        <div class="slide-inner">
+          <div class="eyebrow">Executive read</div>
+          <h2>The profitable agents mostly disappeared; the population that replaced them performed worse.</h2>
+          <p class="lead">The evidence points more toward selection and retention drift than toward the exact peak winners gradually becoming terrible while still being tracked.</p>
+          <div class="metric-row">
+            <div class="metric"><div class="label">Peak net PnL</div><div class="value good">$5,762</div><p class="small">May 30, 02:51 AM</p></div>
+            <div class="metric"><div class="label">Latest net PnL</div><div class="value bad">$2,150</div><p class="small">May 31, 01:11 AM</p></div>
+            <div class="metric"><div class="label">Peak top agents retained</div><div class="value bad">0 / 20</div><p class="small">Top 20 peak agents visible in latest leaderboard.</p></div>
+            <div class="metric"><div class="label">Latest win rate</div><div class="value bad">36.1%</div><p class="small">Down from 57.8% at peak.</p></div>
+          </div>
+          <div class="callout">Bottom line: later/replacement cohorts appear to have learned weaker habits, while many of the earlier winners were no longer present for continued scoring.</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Timeline</div>
+          <h2>Aggregate performance climbed, then rolled over as the live population churned.</h2>
+          <p class="lead">The decline is visible in net PnL, return at risk, and win rate. The sharpest deterioration was late in the sample, after the population had already rotated away from the peak cohort.</p>
+          <div class="chart-wrap"><svg viewBox="0 0 980 330" role="img"><line x1="70" y1="286" x2="956" y2="286" stroke="rgba(191,203,222,0.16)" /><text x="12" y="291" fill="#9aa7ba" font-size="13">$0</text><line x1="70" y1="221.5" x2="956" y2="221.5" stroke="rgba(191,203,222,0.16)" /><text x="12" y="226.5" fill="#9aa7ba" font-size="13">$1,709</text><line x1="70" y1="157" x2="956" y2="157" stroke="rgba(191,203,222,0.16)" /><text x="12" y="162" fill="#9aa7ba" font-size="13">$3,418</text><line x1="70" y1="92.5" x2="956" y2="92.5" stroke="rgba(191,203,222,0.16)" /><text x="12" y="97.5" fill="#9aa7ba" font-size="13">$5,126</text><line x1="70" y1="28" x2="956" y2="28" stroke="rgba(191,203,222,0.16)" /><text x="12" y="33" fill="#9aa7ba" font-size="13">$6,835</text><line x1="70" y1="28" x2="70" y2="286" stroke="rgba(191,203,222,.42)" /><line x1="70" y1="286" x2="956" y2="286" stroke="rgba(191,203,222,.38)" /><path d="M 70.0 195.7 L 88.1 189.0 L 106.2 193.2 L 124.2 176.7 L 142.3 158.7 L 160.4 149.5 L 178.5 165.1 L 196.6 176.8 L 214.7 162.0 L 232.7 137.3 L 250.8 157.9 L 268.9 139.4 L 287.0 141.7 L 305.1 133.6 L 323.1 129.3 L 341.2 132.4 L 359.3 98.9 L 377.4 123.4 L 395.5 109.5 L 413.6 106.1 L 431.6 112.0 L 449.7 107.9 L 467.8 104.8 L 485.9 99.6 L 504.0 122.7 L 522.0 88.2 L 540.1 82.4 L 558.2 68.5 L 576.3 81.7 L 594.4 89.4 L 612.4 91.3 L 630.5 86.6 L 648.6 117.5 L 666.7 92.7 L 684.8 97.5 L 702.9 87.6 L 720.9 79.6 L 739.0 115.3 L 757.1 151.8 L 775.2 145.0 L 793.3 185.7 L 811.3 183.7 L 829.4 163.5 L 847.5 183.3 L 865.6 192.5 L 883.7 201.6 L 901.8 203.8 L 919.8 179.8 L 937.9 197.4 L 956.0 204.9" fill="none" stroke="#32d6a2" stroke-width="3" opacity="1" /><path d="M 70.0 163.4 L 88.1 165.7 L 106.2 155.9 L 124.2 152.9 L 142.3 154.9 L 160.4 155.8 L 178.5 140.2 L 196.6 138.7 L 214.7 140.3 L 232.7 132.3 L 250.8 152.8 L 268.9 136.2 L 287.0 131.0 L 305.1 114.1 L 323.1 89.8 L 341.2 86.2 L 359.3 82.9 L 377.4 89.0 L 395.5 66.0 L 413.6 52.2 L 431.6 61.4 L 449.7 71.7 L 467.8 70.2 L 485.9 56.5 L 504.0 65.0 L 522.0 38.9 L 540.1 46.0 L 558.2 60.4 L 576.3 47.0 L 594.4 67.4 L 612.4 52.8 L 630.5 50.7 L 648.6 52.4 L 666.7 41.7 L 684.8 72.3 L 702.9 63.9 L 720.9 44.2 L 739.0 52.5 L 757.1 75.5 L 775.2 40.3 L 793.3 75.1 L 811.3 62.1 L 829.4 74.5 L 847.5 65.7 L 865.6 70.2 L 883.7 104.9 L 901.8 116.8 L 919.8 75.7 L 937.9 28.0 L 956.0 63.0" fill="none" stroke="#7aa7ff" stroke-width="3" opacity="0.7" /><text x="70" y="316" fill="#9aa7ba" font-size="13" text-anchor="start">May 29, 06:43 PM</text><text x="503.9591836734694" y="316" fill="#9aa7ba" font-size="13" text-anchor="middle">May 30, 02:06 AM</text><text x="956" y="316" fill="#9aa7ba" font-size="13" text-anchor="end">May 31, 01:11 AM</text></svg><div class="legend"><span><i style="background:#32d6a2"></i>Net paper PnL</span><span><i style="background:#7aa7ff"></i>Risked dollars / 20</span></div></div>
+          <div class="chart-wrap"><svg viewBox="0 0 980 330" role="img"><line x1="70" y1="286" x2="956" y2="286" stroke="rgba(191,203,222,0.16)" /><text x="12" y="291" fill="#9aa7ba" font-size="13">0%</text><line x1="70" y1="221.5" x2="956" y2="221.5" stroke="rgba(191,203,222,0.16)" /><text x="12" y="226.5" fill="#9aa7ba" font-size="13">16%</text><line x1="70" y1="157" x2="956" y2="157" stroke="rgba(191,203,222,0.16)" /><text x="12" y="162" fill="#9aa7ba" font-size="13">33%</text><line x1="70" y1="92.5" x2="956" y2="92.5" stroke="rgba(191,203,222,0.16)" /><text x="12" y="97.5" fill="#9aa7ba" font-size="13">49%</text><line x1="70" y1="28" x2="956" y2="28" stroke="rgba(191,203,222,0.16)" /><text x="12" y="33" fill="#9aa7ba" font-size="13">66%</text><line x1="70" y1="28" x2="70" y2="286" stroke="rgba(191,203,222,.42)" /><line x1="70" y1="286" x2="956" y2="286" stroke="rgba(191,203,222,.38)" /><path d="M 70.0 265.6 L 88.1 264.5 L 106.2 269.0 L 124.2 266.4 L 142.3 263.0 L 160.4 260.4 L 178.5 267.5 L 196.6 268.8 L 214.7 267.8 L 232.7 265.8 L 250.8 265.5 L 268.9 265.0 L 287.0 266.5 L 305.1 266.6 L 323.1 268.5 L 341.2 269.1 L 359.3 266.5 L 377.4 266.2 L 395.5 268.5 L 413.6 269.2 L 431.6 267.0 L 449.7 266.3 L 467.8 267.0 L 485.9 268.3 L 504.0 269.3 L 522.0 269.1 L 540.1 267.5 L 558.2 266.1 L 576.3 267.6 L 594.4 266.6 L 612.4 267.4 L 630.5 268.1 L 648.6 270.3 L 666.7 269.5 L 684.8 268.0 L 702.9 267.3 L 720.9 267.8 L 739.0 270.1 L 757.1 271.4 L 775.2 274.0 L 793.3 275.1 L 811.3 276.0 L 829.4 273.1 L 847.5 276.4 L 865.6 276.9 L 883.7 275.6 L 901.8 275.1 L 919.8 274.8 L 937.9 276.5 L 956.0 274.6" fill="none" stroke="#f0c75e" stroke-width="3" opacity="1" /><path d="M 70.0 70.7 L 88.1 66.0 L 106.2 50.2 L 124.2 33.5 L 142.3 28.0 L 160.4 32.0 L 178.5 38.7 L 196.6 47.0 L 214.7 42.6 L 232.7 40.5 L 250.8 61.1 L 268.9 48.9 L 287.0 46.0 L 305.1 44.0 L 323.1 54.8 L 341.2 49.8 L 359.3 42.9 L 377.4 42.8 L 395.5 48.9 L 413.6 48.0 L 431.6 46.5 L 449.7 48.2 L 467.8 45.1 L 485.9 40.7 L 504.0 48.6 L 522.0 45.9 L 540.1 52.5 L 558.2 59.4 L 576.3 62.4 L 594.4 61.8 L 612.4 60.5 L 630.5 58.6 L 648.6 62.2 L 666.7 52.9 L 684.8 56.4 L 702.9 56.7 L 720.9 62.6 L 739.0 71.0 L 757.1 72.0 L 775.2 75.1 L 793.3 82.4 L 811.3 74.4 L 829.4 76.0 L 847.5 86.2 L 865.6 80.3 L 883.7 90.0 L 901.8 101.4 L 919.8 83.8 L 937.9 133.5 L 956.0 144.3" fill="none" stroke="#aa8cff" stroke-width="3" opacity="1" /><text x="70" y="316" fill="#9aa7ba" font-size="13" text-anchor="start">May 29, 06:43 PM</text><text x="503.9591836734694" y="316" fill="#9aa7ba" font-size="13" text-anchor="middle">May 30, 02:06 AM</text><text x="956" y="316" fill="#9aa7ba" font-size="13" text-anchor="end">May 31, 01:11 AM</text></svg><div class="legend"><span><i style="background:#f0c75e"></i>Return at risk</span><span><i style="background:#aa8cff"></i>Win rate</span></div></div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Peak versus latest</div>
+          <h2>The latest population is still positive, but much less efficient.</h2>
+          <p class="lead">Net PnL fell from $5,762 to $2,150. Return at risk fell from 5.08% to 2.90%. Win rate fell from 57.8% to 36.1%.</p>
+          <div class="grid two cards">
+            <div class="card">
+              <h3>Peak snapshot</h3>
+              <p>May 30, 02:51 AM</p>
+              <ul>
+                <li>Rows: 32</li>
+                <li>Net: $5,762</li>
+                <li>Return at risk: 5.08%</li>
+                <li>Wins/losses: 2,764 / 2,018</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Latest snapshot</h3>
+              <p>May 31, 01:11 AM</p>
+              <ul>
+                <li>Rows: 32</li>
+                <li>Net: $2,150</li>
+                <li>Return at risk: 2.90%</li>
+                <li>Wins/losses: 1,708 / 3,019</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Same-agent tracking</div>
+          <h2>The top peak agents were not the ones dragging the latest leaderboard down.</h2>
+          <p class="lead">For the top 20 agents at the peak, 0 were still visible in the latest leaderboard. Their average peak PnL was $255.4 and their average last-seen PnL was $211.8.</p>
+          <div class="chart-wrap"><svg viewBox="0 0 980 320" role="img"><line x1="491.8" y1="18" x2="491.8" y2="294" stroke="rgba(191,203,222,.42)" /><text x="14" y="39.65" fill="#f3f6fb" font-size="14" font-weight="700">spark-kid-g63</text><rect x="124.1936063168576" y="29.9" width="367.6063936831424" height="12.566666666666666" rx="5" fill="#ff7a90" opacity=".88" /><text x="116.1936063168576" y="39.65" fill="#9aa7ba" text-anchor="end" font-size="13">-$123.3</text><text x="14" y="61.31666666666667" fill="#f3f6fb" font-size="14" font-weight="700">anchor-kid-g52</text><rect x="49.39999999999998" y="51.56666666666667" width="442.40000000000003" height="12.566666666666666" rx="5" fill="#ff7a90" opacity=".88" /><text x="41.39999999999998" y="61.31666666666667" fill="#9aa7ba" text-anchor="end" font-size="13">-$148.4</text><text x="14" y="82.98333333333335" fill="#f3f6fb" font-size="14" font-weight="700">spark-kid-g61</text><rect x="410.4319948386764" y="73.23333333333335" width="81.36800516132358" height="12.566666666666666" rx="5" fill="#ff7a90" opacity=".88" /><text x="402.4319948386764" y="82.98333333333335" fill="#9aa7ba" text-anchor="end" font-size="13">-$27.3</text><text x="14" y="104.65" fill="#f3f6fb" font-size="14" font-weight="700">anchor-kid-g51</text><rect x="165.16529009447254" y="94.9" width="326.6347099055275" height="12.566666666666666" rx="5" fill="#ff7a90" opacity=".88" /><text x="157.16529009447254" y="104.65" fill="#9aa7ba" text-anchor="end" font-size="13">-$109.6</text><text x="14" y="126.31666666666668" fill="#f3f6fb" font-size="14" font-weight="700">spark-kid-g58</text><rect x="279.366692228116" y="116.56666666666668" width="212.43330777188405" height="12.566666666666666" rx="5" fill="#ff7a90" opacity=".88" /><text x="271.366692228116" y="126.31666666666668" fill="#9aa7ba" text-anchor="end" font-size="13">-$71.3</text><text x="14" y="147.98333333333335" fill="#f3f6fb" font-size="14" font-weight="700">spark-kid-g60</text><rect x="401.42748090499913" y="138.23333333333335" width="90.3725190950009" height="12.566666666666666" rx="5" fill="#ff7a90" opacity=".88" /><text x="393.42748090499913" y="147.98333333333335" fill="#9aa7ba" text-anchor="end" font-size="13">-$30.3</text><text x="14" y="169.65" fill="#f3f6fb" font-size="14" font-weight="700">anchor-kid-g53</text><rect x="252.92541201887846" y="159.9" width="238.87458798112155" height="12.566666666666666" rx="5" fill="#ff7a90" opacity=".88" /><text x="244.92541201887846" y="169.65" fill="#9aa7ba" text-anchor="end" font-size="13">-$80.1</text><text x="14" y="191.3166666666667" fill="#f3f6fb" font-size="14" font-weight="700">anchor-kid-g51</text><rect x="354.9583483587128" y="181.5666666666667" width="136.8416516412872" height="12.566666666666666" rx="5" fill="#ff7a90" opacity=".88" /><text x="346.9583483587128" y="191.3166666666667" fill="#9aa7ba" text-anchor="end" font-size="13">-$45.9</text><text x="14" y="212.98333333333335" fill="#f3f6fb" font-size="14" font-weight="700">anchor-kid-g54</text><rect x="299.89242312420436" y="203.23333333333335" width="191.90757687579568" height="12.566666666666666" rx="5" fill="#ff7a90" opacity=".88" /><text x="291.89242312420436" y="212.98333333333335" fill="#9aa7ba" text-anchor="end" font-size="13">-$64.4</text><text x="14" y="234.65" fill="#f3f6fb" font-size="14" font-weight="700">spark-kid-g59</text><rect x="404.666741860439" y="224.9" width="87.13325813956102" height="12.566666666666666" rx="5" fill="#ff7a90" opacity=".88" /><text x="396.666741860439" y="234.65" fill="#9aa7ba" text-anchor="end" font-size="13">-$29.2</text><text x="14" y="256.3166666666667" fill="#f3f6fb" font-size="14" font-weight="700">spark-kid-g57</text><rect x="397.33805782760504" y="246.5666666666667" width="94.46194217239497" height="12.566666666666666" rx="5" fill="#ff7a90" opacity=".88" /><text x="389.33805782760504" y="256.3166666666667" fill="#9aa7ba" text-anchor="end" font-size="13">-$31.7</text><text x="14" y="277.98333333333335" fill="#f3f6fb" font-size="14" font-weight="700">spark-kid-g61</text><rect x="491.8" y="268.23333333333335" width="0" height="12.566666666666666" rx="5" fill="#32d6a2" opacity=".88" /><text x="499.8" y="277.98333333333335" fill="#9aa7ba" text-anchor="start" font-size="13">+$0.0</text></svg></div>
+          <table><thead><tr><th>Peak agent</th><th>Role</th><th>Peak PnL</th><th>Last seen PnL</th><th>Delta</th><th>Latest?</th><th>Last seen</th></tr></thead><tbody><tr><td>spark-kid-g63-erq4a6</td><td><span class="role spark">spark</span></td><td>$344.3</td><td>$221.0</td><td class="bad">-$123.3</td><td>no</td><td>May 30, 02:33 PM</td></tr><tr><td>anchor-kid-g52-djwbxp</td><td><span class="role anchor">anchor</span></td><td>$288.8</td><td>$140.4</td><td class="bad">-$148.4</td><td>no</td><td>May 30, 10:56 PM</td></tr><tr><td>spark-kid-g61-5lzopm</td><td><span class="role spark">spark</span></td><td>$276.6</td><td>$249.3</td><td class="bad">-$27.3</td><td>no</td><td>May 30, 06:45 PM</td></tr><tr><td>anchor-kid-g51-9qf1i4</td><td><span class="role anchor">anchor</span></td><td>$282.2</td><td>$172.7</td><td class="bad">-$109.6</td><td>no</td><td>May 30, 09:56 PM</td></tr><tr><td>spark-kid-g58-a2gthr</td><td><span class="role spark">spark</span></td><td>$322.1</td><td>$250.8</td><td class="bad">-$71.3</td><td>no</td><td>May 30, 05:09 PM</td></tr><tr><td>spark-kid-g60-bp4s0o</td><td><span class="role spark">spark</span></td><td>$271.2</td><td>$240.9</td><td class="bad">-$30.3</td><td>no</td><td>May 30, 03:06 AM</td></tr><tr><td>anchor-kid-g53-52k3yo</td><td><span class="role anchor">anchor</span></td><td>$286.0</td><td>$205.9</td><td class="bad">-$80.1</td><td>no</td><td>May 30, 01:45 PM</td></tr><tr><td>anchor-kid-g51-4i2utm</td><td><span class="role anchor">anchor</span></td><td>$264.5</td><td>$218.6</td><td class="bad">-$45.9</td><td>no</td><td>May 30, 02:33 PM</td></tr><tr><td>anchor-kid-g54-dbpv62</td><td><span class="role anchor">anchor</span></td><td>$273.8</td><td>$209.4</td><td class="bad">-$64.4</td><td>no</td><td>May 30, 01:30 PM</td></tr><tr><td>spark-kid-g59-evd7ct</td><td><span class="role spark">spark</span></td><td>$262.0</td><td>$232.8</td><td class="bad">-$29.2</td><td>no</td><td>May 30, 02:51 AM</td></tr><tr><td>spark-kid-g57-3y27m3</td><td><span class="role spark">spark</span></td><td>$261.3</td><td>$229.6</td><td class="bad">-$31.7</td><td>no</td><td>May 30, 02:51 AM</td></tr><tr><td>spark-kid-g61-6l71uq</td><td><span class="role spark">spark</span></td><td>$227.7</td><td>$227.7</td><td class="good">$0.0</td><td>no</td><td>May 30, 02:51 AM</td></tr></tbody></table>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Lineage behavior</div>
+          <h2>Anchor survived; early became the clearest bad habit.</h2>
+          <p class="lead">At the peak, spark and anchor carried most profit. In the latest population, anchor still contributes, but the early lineage has become a large loss center.</p>
+          <table><thead><tr><th>Lineage</th><th>Peak rows</th><th>Peak net</th><th>Peak R@Risk</th><th>Latest rows</th><th>Latest net</th><th>Delta</th><th>Latest win</th></tr></thead><tbody><tr><td><span class="role spark">spark</span></td><td>11</td><td>$2,472</td><td>5.63%</td><td>2</td><td>$203</td><td class="bad">-$2,268</td><td>63.1%</td></tr><tr><td><span class="role anchor">anchor</span></td><td>11</td><td>$2,410</td><td>4.86%</td><td>14</td><td>$2,128</td><td class="bad">-$282</td><td>50.5%</td></tr><tr><td><span class="role early">early</span></td><td>4</td><td>$666</td><td>4.71%</td><td>2</td><td>-$186</td><td class="bad">-$853</td><td>0.8%</td></tr><tr><td><span class="role stride">stride</span></td><td>2</td><td>$214</td><td>3.68%</td><td>5</td><td>$6</td><td class="bad">-$207</td><td>70.9%</td></tr><tr><td><span class="role pulse">pulse</span></td><td>2</td><td>-$0</td><td>-0.05%</td><td>4</td><td>-$0</td><td class="bad">-$0</td><td>38.5%</td></tr><tr><td><span class="role scout">scout</span></td><td>2</td><td>-$0</td><td>-4.04%</td><td>5</td><td>-$2</td><td class="bad">-$2</td><td>0.7%</td></tr></tbody></table>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Generation comparison</div>
+          <h2>The visible generation mix changed; the old winners were not kept as an elite archive.</h2>
+          <p class="lead">This table compares genome generation numbers present at the peak versus latest snapshots. It is not enough by itself to prove old winners would fail on new markets; it shows that the active population being evaluated changed materially.</p>
+          <table><thead><tr><th>Genome gen</th><th>Peak rows</th><th>Peak net</th><th>Peak R@Risk</th><th>Latest rows</th><th>Latest net</th><th>Latest R@Risk</th></tr></thead><tbody><tr><td>g12</td><td>7</td><td>$1,573</td><td>5.06%</td><td>0</td><td>-</td><td>-</td></tr><tr><td>g15</td><td>5</td><td>$989</td><td>5.49%</td><td>5</td><td>$818</td><td>3.44%</td></tr><tr><td>g29</td><td>6</td><td>$880</td><td>4.41%</td><td>0</td><td>-</td><td>-</td></tr><tr><td>g14</td><td>3</td><td>$750</td><td>6.06%</td><td>4</td><td>$635</td><td>3.47%</td></tr><tr><td>g11</td><td>2</td><td>$465</td><td>5.39%</td><td>0</td><td>-</td><td>-</td></tr><tr><td>g13</td><td>2</td><td>$451</td><td>4.92%</td><td>1</td><td>$224</td><td>5.09%</td></tr><tr><td>g8</td><td>1</td><td>$253</td><td>4.63%</td><td>0</td><td>-</td><td>-</td></tr><tr><td>g10</td><td>1</td><td>$233</td><td>5.15%</td><td>0</td><td>-</td><td>-</td></tr><tr><td>g16</td><td>1</td><td>$169</td><td>4.04%</td><td>3</td><td>$316</td><td>3.09%</td></tr><tr><td>g43</td><td>2</td><td>-$0</td><td>-0.05%</td><td>0</td><td>-</td><td>-</td></tr><tr><td>g26</td><td>0</td><td>-</td><td>-</td><td>1</td><td>$154</td><td>4.51%</td></tr><tr><td>g17</td><td>0</td><td>-</td><td>-</td><td>1</td><td>$136</td><td>3.21%</td></tr><tr><td>g27</td><td>0</td><td>-</td><td>-</td><td>1</td><td>$49</td><td>2.78%</td></tr><tr><td>g51</td><td>0</td><td>-</td><td>-</td><td>5</td><td>$6</td><td>0.60%</td></tr><tr><td>g65</td><td>0</td><td>-</td><td>-</td><td>4</td><td>-$0</td><td>-1.37%</td></tr><tr><td>g53</td><td>0</td><td>-</td><td>-</td><td>5</td><td>-$2</td><td>-0.81%</td></tr></tbody></table>
+          <div class="callout">The missing control is continuous re-scoring of historical elites. Without that, the dashboard can confuse “old agent was removed” with “old agent became bad.”</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">What to change next</div>
+          <h2>Add an elite archive so the system can tell drift from replacement.</h2>
+          <div class="grid two cards">
+            <div class="card">
+              <h3>Preserve winners</h3>
+              <p>Keep the top historical genomes in a read-only elite archive and re-score them every generation, even if they are no longer actively trading.</p>
+            </div>
+            <div class="card">
+              <h3>Compare cohorts</h3>
+              <p>Show first-seen cohort, latest active cohort, and same-genome drift. This separates bad new children from old winners failing on new market regimes.</p>
+            </div>
+            <div class="card">
+              <h3>Guard retention</h3>
+              <p>Do not let short-term reward bonuses replace a high-PnL champion unless the child beats the archive on recent settled windows.</p>
+            </div>
+            <div class="card">
+              <h3>Alert on habits</h3>
+              <p>Flag lineages when win rate collapses, loss count accelerates, or they farm trades with poor notional efficiency.</p>
+            </div>
+          </div>
+          <div class="callout">Interpretation: the general agents found something useful, but the population management was too willing to discard winners before proving the replacements were better.</div>
+          <p class="small">Generated from /Users/aadisaha/Downloads/self recursive quant fund/.data/kalshi-rl-run-history.json on 2026-05-31T08:27:08.251Z. Performance-rich window: May 29, 06:43 PM to May 31, 01:11 AM.</p>
+        </div>
+      </section>
+    </main>
+    <script>
+      const slides = [...document.querySelectorAll(".slide")];
+      const current = document.getElementById("current");
+      const total = document.getElementById("total");
+      let index = 0;
+      total.textContent = slides.length;
+      function show(next) {
+        index = (next + slides.length) % slides.length;
+        slides.forEach((slide, i) => slide.classList.toggle("active", i === index));
+        current.textContent = index + 1;
+      }
+      document.getElementById("prev").addEventListener("click", () => show(index - 1));
+      document.getElementById("next").addEventListener("click", () => show(index + 1));
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowRight" || event.key === " ") show(index + 1);
+        if (event.key === "ArrowLeft") show(index - 1);
+      });
+      show(0);
+    </script>
+  </body>
+</html>
