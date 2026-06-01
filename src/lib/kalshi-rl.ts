@@ -2,7 +2,7 @@ import "server-only";
 
 import { appendLedger } from "@/lib/ledger";
 import { readKalshiOrderbookEvents } from "@/lib/kalshi-orderbook";
-import { readDocument, writeDocument } from "@/lib/storage";
+import { pgQuery, readDocument, storageMode, writeDocument } from "@/lib/storage";
 import type {
   GeneticPolicyGenome,
   GeneticTrainingRun,
@@ -593,9 +593,23 @@ async function readLastRun(): Promise<GeneticTrainingRun | null> {
   });
 }
 
-async function readRunHistory(): Promise<GeneticTrainingRun[]> {
+async function readRunHistory(limit?: number): Promise<GeneticTrainingRun[]> {
+  const rowLimit = Number.isFinite(limit) && limit ? Math.max(1, Math.floor(limit)) : null;
+  if (storageMode() === "postgres" && rowLimit) {
+    const rows = await pgQuery<{ value: unknown }>(
+      `select coalesce(jsonb_agg(elem.value order by elem.ordinality), '[]'::jsonb) as value
+         from quant_documents d
+         cross join lateral jsonb_array_elements(d.value) with ordinality as elem(value, ordinality)
+        where d.namespace = $1
+          and d.file_name = $2
+          and elem.ordinality <= $3`,
+      [RL_NAMESPACE, RUN_HISTORY_FILE, rowLimit],
+    );
+    return Array.isArray(rows[0]?.value) ? (rows[0].value as GeneticTrainingRun[]) : [];
+  }
   return readDocument<GeneticTrainingRun[]>(RL_NAMESPACE, RUN_HISTORY_FILE, [], (value) => {
-    return Array.isArray(value) ? (value as GeneticTrainingRun[]) : [];
+    const history = Array.isArray(value) ? (value as GeneticTrainingRun[]) : [];
+    return rowLimit ? history.slice(0, rowLimit) : history;
   });
 }
 
@@ -1334,7 +1348,7 @@ export async function readKalshiRlSummary(): Promise<KalshiRlSummary> {
     readKalshiOrderbookEvents({ limit: 10_000, seriesTicker: cfg.seriesTicker }),
     readChampion(),
     readLastRun(),
-    readRunHistory(),
+    readRunHistory(40),
     readEliteArchive(),
   ]);
   const eliteArchive = mergeEliteArchive(persistedArchive, runHistory);
