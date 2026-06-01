@@ -230,6 +230,36 @@ describe("kalshi live safety", () => {
     expect(result.submitted[0].remoteOrderId).toBe("remote-conflict");
   });
 
+  it("ignores remote Kalshi orders that were not created by the live swarm", async () => {
+    process.env.KALSHI_LIVE_TRADING_ENABLED = "false";
+    kalshiMocks.get.mockImplementation(async (pathArg: string) => {
+      if (pathArg.includes("/orders")) {
+        return {
+          orders: [
+            {
+              client_order_id: "legacy-manual-order",
+              order_id: "manual-1",
+              status: "executed",
+              ticker: "KXLEGACY-TEST",
+            },
+          ],
+        };
+      }
+      if (pathArg.includes("/positions")) return { market_positions: [] };
+      if (pathArg.includes("/balance")) return { balance: 50_000, portfolio_value: 50_000 };
+      return {};
+    });
+
+    const { runKalshiLiveTick } = await import("@/lib/kalshi-live");
+    const result = await runKalshiLiveTick();
+
+    expect(result.reconciliation?.ok).toBe(true);
+    expect(result.reconciliation?.mismatchCount).toBe(0);
+    expect(result.reconciliation?.remoteOrderCount).toBe(0);
+    expect(result.status.safetyHalt).toBeNull();
+    expect(result.status.recentIntents).toHaveLength(0);
+  });
+
   it("honors the global exposure cap without resizing order notional", async () => {
     kalshiMocks.get.mockImplementation(async (pathArg: string) => {
       if (pathArg.includes("/orders")) return { orders: [] };

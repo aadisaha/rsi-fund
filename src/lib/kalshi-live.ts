@@ -144,6 +144,7 @@ type RemotePositionsResponse = {
 
 const LIVE_NAMESPACE = "kalshi-live";
 const LIVE_FILE = "kalshi-live-state.json";
+const LIVE_CLIENT_ORDER_ID_PREFIX = "kq_";
 let localLiveQueue = Promise.resolve();
 
 function envTrim(value: string | undefined): string {
@@ -225,7 +226,11 @@ export function kalshiLiveClientOrderId(parts: {
   action: string;
   signalAt: string;
 }): string {
-  return `kq_${createHash("sha256").update(stableStringify(parts)).digest("base64url").slice(0, 42)}`;
+  return `${LIVE_CLIENT_ORDER_ID_PREFIX}${createHash("sha256").update(stableStringify(parts)).digest("base64url").slice(0, 42)}`;
+}
+
+function isKalshiLiveClientOrderId(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith(LIVE_CLIENT_ORDER_ID_PREFIX);
 }
 
 function cents(value: number): number {
@@ -292,7 +297,10 @@ export async function setKalshiLiveKillSwitch(input: {
 async function cancelRestingLiveOrders(reason: string): Promise<void> {
   const cancellable = new Set<KalshiLiveIntentStatus>(["submitted", "resting", "partial", "unknown"]);
   const intents = (await readIntents(200)).filter(
-    (intent) => intent.remoteOrderId && cancellable.has(intent.status),
+    (intent) =>
+      isKalshiLiveClientOrderId(intent.clientOrderId) &&
+      intent.remoteOrderId &&
+      cancellable.has(intent.status),
   );
   for (const intent of intents) {
     try {
@@ -323,6 +331,13 @@ async function setSafetyHalt(reason: string): Promise<KalshiLiveKillSwitchState>
   doc.safetyHalt = halt;
   await writeLiveDocument(doc);
   return halt;
+}
+
+async function clearSafetyHaltIfHealthy(): Promise<void> {
+  const doc = await readLiveDocument();
+  if (doc.safetyHalt?.source !== "safety") return;
+  doc.safetyHalt = null;
+  await writeLiveDocument(doc);
 }
 
 async function upsertIntent(intent: KalshiLiveOrderIntent): Promise<KalshiLiveOrderIntent> {
@@ -655,9 +670,11 @@ export async function runKalshiLiveReconciliation(): Promise<KalshiLiveReconcili
     errors.push(error instanceof Error ? error.message : "Unknown Kalshi reconciliation error.");
   }
 
-  const remoteByClient = new Map(remoteOrders.map((order) => [order.client_order_id, order]));
+  const liveLocal = local.filter((intent) => isKalshiLiveClientOrderId(intent.clientOrderId));
+  const liveRemoteOrders = remoteOrders.filter((order) => isKalshiLiveClientOrderId(order.client_order_id));
+  const remoteByClient = new Map(liveRemoteOrders.map((order) => [order.client_order_id, order]));
   let mismatchCount = errors.length;
-  for (const intent of local) {
+  for (const intent of liveLocal) {
     const terminal = new Set<KalshiLiveIntentStatus>(["skipped", "filled", "canceled", "rejected"]);
     const remote = remoteByClient.get(intent.clientOrderId);
     if (!remote && !terminal.has(intent.status)) {
@@ -678,13 +695,14 @@ export async function runKalshiLiveReconciliation(): Promise<KalshiLiveReconcili
     }
   }
 
-  const localClientIds = new Set(local.map((intent) => intent.clientOrderId));
-  for (const remote of remoteOrders) {
-    if (remote.client_order_id && localClientIds.has(remote.client_order_id)) continue;
-    if (!remote.client_order_id) continue;
+  const localClientIds = new Set(liveLocal.map((intent) => intent.clientOrderId));
+  for (const remote of liveRemoteOrders) {
+    const clientOrderId = remote.client_order_id;
+    if (!isKalshiLiveClientOrderId(clientOrderId)) continue;
+    if (localClientIds.has(clientOrderId)) continue;
     mismatchCount += 1;
     await upsertIntent({
-      clientOrderId: remote.client_order_id,
+      clientOrderId,
       createdAt: startedAt,
       updatedAt: startedAt,
       status: "orphan_remote",
@@ -711,14 +729,15 @@ export async function runKalshiLiveReconciliation(): Promise<KalshiLiveReconcili
     finishedAt: nowIso(),
     ok: mismatchCount === 0,
     mismatchCount,
-    localOrderCount: local.length,
-    remoteOrderCount: remoteOrders.length,
+    localOrderCount: liveLocal.length,
+    remoteOrderCount: liveRemoteOrders.length,
     remotePositionCount: remotePositions.length,
     balanceUsd,
     errors,
   };
   await recordReconciliation(run);
   if (!run.ok) await setSafetyHalt(`Kalshi live reconciliation mismatch count ${mismatchCount}.`);
+  else await clearSafetyHaltIfHealthy();
   await appendLedger({
     type: "observation",
     source: "kalshi",
@@ -730,7 +749,9 @@ export async function runKalshiLiveReconciliation(): Promise<KalshiLiveReconcili
 export async function readKalshiLiveStatus(): Promise<KalshiLiveStatus> {
   const cfg = kalshiLiveConfig();
   const doc = await readLiveDocument();
-  const recentIntents = await readIntents(20);
+  const recentIntents = (await readIntents(100))
+    .filter((intent) => isKalshiLiveClientOrderId(intent.clientOrderId))
+    .slice(0, 20);
   const latestEvent =
     (await readKalshiOrderbookEvents({
       limit: 1,
@@ -788,7 +809,7 @@ export async function readKalshiLiveStatus(): Promise<KalshiLiveStatus> {
         reconciliationAgeMs > cfg.maxReconciliationAgeMs,
     },
     exposure: {
-      openUsd: openExposureUsd(await readIntents(500)),
+      openUsd: openExposureUsd((await readIntents(500)).filter((intent) => isKalshiLiveClientOrderId(intent.clientOrderId))),
       maxOpenUsd: cfg.maxOpenUsd,
       maxOrderUsd: cfg.maxOrderUsd,
     },
@@ -853,7 +874,7 @@ export async function runKalshiLiveTick(): Promise<{
 
   const summary = await readKalshiRlSummary();
   const candidates = buildCandidates(summary, tick);
-  let exposure = openExposureUsd(await readIntents(500));
+  let exposure = openExposureUsd((await readIntents(500)).filter((intent) => isKalshiLiveClientOrderId(intent.clientOrderId)));
   for (const candidate of candidates) {
     if (exposure + candidate.notionalUsd > cfg.maxOpenUsd) {
       skipped.push(await updateIntent({ ...(await upsertIntent(candidate)), status: "skipped", error: "max-open-exposure" }));
