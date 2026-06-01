@@ -366,6 +366,27 @@ describe("kalshi live safety", () => {
     expect(kalshiMocks.post).not.toHaveBeenCalled();
   });
 
+  it("rejects phantom local intents when no remote Kalshi order exists", async () => {
+    kalshiMocks.get.mockImplementation(async (pathArg: string) => {
+      if (pathArg.includes("/orders")) return { orders: [] };
+      if (pathArg.includes("/positions")) return { market_positions: [] };
+      if (pathArg.includes("/balance")) return { balance: 50_000, portfolio_value: 50_000 };
+      return {};
+    });
+    kalshiMocks.post.mockRejectedValue(new Error("network timeout after order attempt"));
+    rlMocks.summary.mockResolvedValue(liveSummary());
+
+    const { runKalshiLiveTick } = await import("@/lib/kalshi-live");
+    const first = await runKalshiLiveTick();
+    const second = await runKalshiLiveTick();
+
+    expect(first.submitted[0].status).toBe("unknown");
+    expect(second.reconciliation?.ok).toBe(true);
+    expect(second.status.safetyHalt).toBeNull();
+    expect(second.status.exposure.pendingOrderUsd).toBe(0);
+    expect(second.status.recentIntents[0].status).toBe("rejected");
+  });
+
   it("turning on the operator kill switch cancels resting live orders", async () => {
     let remoteClientOrderId: string | null = null;
     kalshiMocks.get.mockImplementation(async (pathArg: string) => {

@@ -448,6 +448,74 @@ function remotePositionExposureUsd(positions: KalshiPosition[]): number {
   }, 0);
 }
 
+function remotePositionPnlUsd(positions: KalshiPosition[]): number {
+  return positions.reduce((sum, position) => {
+    return sum + dollarsText(position.realized_pnl_dollars);
+  }, 0);
+}
+
+function logKalshiLiveTick(input: {
+  generatedAt: string;
+  tick: KalshiOrderbookEvent | null;
+  reconciliation: KalshiLiveReconciliationRun | null;
+  submitted: KalshiLiveOrderIntent[];
+  skipped: KalshiLiveOrderIntent[];
+  status: KalshiLiveStatus;
+}): void {
+  const remotePositions = input.status.remotePositions ?? [];
+  console.log(
+    JSON.stringify({
+      kind: "kalshi_live_tick",
+      at: input.generatedAt,
+      marketTicker: input.tick?.marketTicker ?? null,
+      blockers: input.status.blockers,
+      feedAgeMs: input.status.feed.ageMs,
+      reconciliationAgeMs: input.status.reconciliation.ageMs,
+      balanceUsd: input.status.reconciliation.latest?.balanceUsd ?? null,
+      exposure: input.status.exposure,
+      remotePositions: remotePositions.map((position) => ({
+        ticker: position.ticker,
+        exposureUsd: dollarsText(position.market_exposure_dollars),
+        realizedPnlUsd: dollarsText(position.realized_pnl_dollars),
+        feesPaidUsd: dollarsText(position.fees_paid_dollars),
+      })),
+      remotePositionPnlUsd: remotePositionPnlUsd(remotePositions),
+      submitted: input.submitted.map((intent) => ({
+        clientOrderId: intent.clientOrderId,
+        genomeId: intent.genomeId,
+        marketTicker: intent.marketTicker,
+        side: intent.side,
+        action: intent.action,
+        notionalUsd: intent.notionalUsd,
+        price: intent.price,
+        count: intent.count,
+        status: intent.status,
+        remoteStatus: intent.remoteStatus ?? null,
+        error: intent.error ?? null,
+      })),
+      skipped: input.skipped.map((intent) => ({
+        clientOrderId: intent.clientOrderId,
+        genomeId: intent.genomeId,
+        marketTicker: intent.marketTicker,
+        side: intent.side,
+        action: intent.action,
+        notionalUsd: intent.notionalUsd,
+        reason: intent.error ?? intent.reason,
+      })),
+      reconciliation: input.reconciliation
+        ? {
+            ok: input.reconciliation.ok,
+            mismatchCount: input.reconciliation.mismatchCount,
+            remoteOrderCount: input.reconciliation.remoteOrderCount,
+            remotePositionCount: input.reconciliation.remotePositionCount,
+            remoteExposureUsd: input.reconciliation.remoteExposureUsd,
+            errors: input.reconciliation.errors,
+          }
+        : null,
+    }),
+  );
+}
+
 async function recordHeartbeat(at: string): Promise<void> {
   const doc = await readLiveDocument();
   doc.latestHeartbeatAt = at;
@@ -707,10 +775,22 @@ export async function runKalshiLiveReconciliation(): Promise<KalshiLiveReconcili
   let mismatchCount = errors.length;
   for (const intent of liveLocal) {
     const terminal = new Set<KalshiLiveIntentStatus>(["skipped", "filled", "canceled", "rejected"]);
-    const remote = remoteByClient.get(intent.clientOrderId);
+    let remote = remoteByClient.get(intent.clientOrderId);
     if (!remote && !terminal.has(intent.status)) {
-      mismatchCount += 1;
-      continue;
+      const reconciled = await reconcileClientOrder(intent.clientOrderId);
+      if (reconciled?.rawRemote) {
+        remote = reconciled.rawRemote as RemoteOrder;
+      } else if (!intent.remoteOrderId) {
+        await updateIntent({
+          ...intent,
+          status: "rejected",
+          error: "No remote Kalshi order found for local live intent during reconciliation.",
+        });
+        continue;
+      } else {
+        mismatchCount += 1;
+      }
+      if (!remote) continue;
     }
     if (remote) {
       const nextStatus = rawStatusToLocal(remote.status);
@@ -723,6 +803,7 @@ export async function runKalshiLiveReconciliation(): Promise<KalshiLiveReconcili
           rawRemote: remote as Record<string, unknown>,
         });
       }
+      continue;
     }
   }
 
