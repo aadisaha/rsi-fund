@@ -144,7 +144,7 @@ beforeEach(async () => {
   process.env.QUANT_STORAGE_DRIVER = "local";
   process.env.KALSHI_LIVE_TRADING_ENABLED = "true";
   process.env.KALSHI_LIVE_KILL_SWITCH = "false";
-  process.env.KALSHI_LIVE_MAX_OPEN_USD = "500";
+  process.env.KALSHI_LIVE_MAX_OPEN_USD = "100";
   process.env.KALSHI_LIVE_MAX_ORDER_USD = "25";
   process.env.KALSHI_LIVE_MAX_FEED_AGE_MS = "45000";
   process.env.KALSHI_LIVE_MAX_RECONCILIATION_AGE_MS = "60000";
@@ -284,7 +284,7 @@ describe("kalshi live safety", () => {
       return {};
     });
     kalshiMocks.post.mockResolvedValue({ order: { order_id: "remote-1", status: "resting" } });
-    process.env.KALSHI_LIVE_MAX_OPEN_USD = "25";
+    process.env.KALSHI_LIVE_MAX_OPEN_USD = "5";
     rlMocks.summary.mockResolvedValue(
       liveSummary([
         openPosition({ openedAt: "2026-06-01T00:01:00.000Z" }),
@@ -296,9 +296,9 @@ describe("kalshi live safety", () => {
     const result = await runKalshiLiveTick();
 
     expect(result.submitted).toHaveLength(1);
-    expect(result.submitted[0].notionalUsd).toBe(25);
+    expect(result.submitted[0].notionalUsd).toBe(5);
     expect(result.skipped).toHaveLength(1);
-    expect(result.skipped[0].notionalUsd).toBe(25);
+    expect(result.skipped[0].notionalUsd).toBe(5);
   });
 
   it("counts real Kalshi positions toward the global exposure cap", async () => {
@@ -309,7 +309,7 @@ describe("kalshi live safety", () => {
           market_positions: [
             {
               ticker: "KXBTC15M-REMOTE",
-              market_exposure_dollars: "490.00",
+              market_exposure_dollars: "98.00",
             },
           ],
         };
@@ -323,8 +323,8 @@ describe("kalshi live safety", () => {
     const { runKalshiLiveTick } = await import("@/lib/kalshi-live");
     const result = await runKalshiLiveTick();
 
-    expect(result.status.exposure.remotePositionUsd).toBe(490);
-    expect(result.status.exposure.openUsd).toBe(490);
+    expect(result.status.exposure.remotePositionUsd).toBe(98);
+    expect(result.status.exposure.openUsd).toBe(98);
     expect(result.status.remotePositions).toHaveLength(1);
     expect(result.submitted).toHaveLength(0);
     expect(result.skipped).toHaveLength(1);

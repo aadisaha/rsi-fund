@@ -267,8 +267,9 @@ export function kalshiLiveConfig() {
   return {
     tradingEnabled: envFlag("KALSHI_LIVE_TRADING_ENABLED", false),
     envKillSwitchActive: envFlag("KALSHI_LIVE_KILL_SWITCH", true),
-    maxOpenUsd: envNumber("KALSHI_LIVE_MAX_OPEN_USD", 500),
+    maxOpenUsd: envNumber("KALSHI_LIVE_MAX_OPEN_USD", 100),
     maxOrderUsd: envNumber("KALSHI_LIVE_MAX_ORDER_USD", 25),
+    orderSizeMultiplier: envNumber("KALSHI_LIVE_ORDER_SIZE_MULTIPLIER", 0.2),
     maxFeedAgeMs: envNumber("KALSHI_LIVE_MAX_FEED_AGE_MS", 45_000),
     maxReconciliationAgeMs: envNumber("KALSHI_LIVE_MAX_RECONCILIATION_AGE_MS", 60_000),
     seriesTicker: envTrim(process.env.KALSHI_RL_SERIES) || "KXBTC15M",
@@ -520,12 +521,13 @@ function candidateFromPosition(args: {
   position: KalshiPaperRlOpenPosition;
   quote: KalshiOrderbookEvent;
   maxOrderUsd: number;
+  orderSizeMultiplier: number;
 }): KalshiLiveOrderIntent | null {
   const side = args.position.side;
   if (side !== "yes" && side !== "no") return null;
   const price = quotePrice(args.quote, side);
   if (price == null || price <= 0 || price >= 1) return null;
-  const notionalUsd = Number(args.position.costBasisUsd.toFixed(2));
+  const notionalUsd = Number((args.position.costBasisUsd * args.orderSizeMultiplier).toFixed(2));
   if (notionalUsd <= 0 || notionalUsd > args.maxOrderUsd) return null;
   const count = Math.max(1, Math.floor(notionalUsd / price));
   const signalAt = args.position.openedAt || args.quote.receivedAt;
@@ -572,6 +574,7 @@ function buildCandidates(summary: Awaited<ReturnType<typeof readKalshiRlSummary>
         position,
         quote,
         maxOrderUsd: cfg.maxOrderUsd,
+        orderSizeMultiplier: cfg.orderSizeMultiplier,
       });
       if (candidate) candidates.push(candidate);
     }
