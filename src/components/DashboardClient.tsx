@@ -22,7 +22,6 @@ import {
 
 import type {
   DashboardPayload,
-  KalshiPretrainedRlSummary,
   KalshiRlSummary,
   LedgerRecord,
   MarketLiveSeries,
@@ -168,7 +167,7 @@ type AgentPnlSeries = {
   label: string;
   color: string;
   deprecated?: boolean;
-  family: "genetic" | "molly";
+  family: "genetic";
   role: LineageRoleId;
 };
 
@@ -204,7 +203,6 @@ type LineageRoleId =
   | "hedger"
   | "conviction"
   | "scalper"
-  | "molly"
   | "baseline";
 
 type LatestCyclePayload = {
@@ -240,7 +238,6 @@ const LINEAGE_ROLES: Record<LineageRoleId, { label: string; color: string; descr
   hedger: { label: "Hedger", color: "#f59e0b", description: "future line: cuts adverse exposure" },
   conviction: { label: "Conviction", color: "#fb7185", description: "future line: holds close only with strong edge" },
   scalper: { label: "Scalper", color: "#c084fc", description: "future line: closes before final minute" },
-  molly: { label: "Molly", color: "#e879f9", description: "pretrained paper-shadow benchmark" },
   baseline: { label: "Baseline", color: "#94a3b8", description: "unassigned genetic families" },
 };
 const LINEAGE_ROLE_ORDER: LineageRoleId[] = [
@@ -250,7 +247,6 @@ const LINEAGE_ROLE_ORDER: LineageRoleId[] = [
   "stride",
   "anchor",
   "spark",
-  "molly",
   "baseline",
   "closer",
   "sprinter",
@@ -390,6 +386,7 @@ export function DashboardClient({ initial, initialTab = "cockpit", rlVariant = "
   const [cycleChartMode, setCycleChartMode] = useState<"trsi" | "notional" | "fills">("trsi");
   const [forecastView, setForecastView] = useState<"score" | "expectedReturn" | "vol">("score");
   const [isPending, startTransition] = useTransition();
+  const rlOnly = initialTab === "rl";
 
   useEffect(() => {
     if (tab !== "rl") return;
@@ -400,18 +397,11 @@ export function DashboardClient({ initial, initialTab = "cockpit", rlVariant = "
       if (inFlight) return;
       inFlight = true;
       try {
-        const [rlRes, pretrainedRes] = await Promise.all([
-          fetch("/api/kalshi/rl/summary", { cache: "no-store" }),
-          fetch("/api/kalshi/pretrained-rl/summary", { cache: "no-store" }),
-        ]);
+        const rlRes = await fetch("/api/kalshi/rl/summary", { cache: "no-store" });
         const json = (await rlRes.json().catch(() => ({}))) as {
           ok?: boolean;
           generatedAt?: string;
           summary?: KalshiRlSummary;
-        };
-        const pretrained = (await pretrainedRes.json().catch(() => ({}))) as {
-          ok?: boolean;
-          summary?: KalshiPretrainedRlSummary;
         };
         if (!cancelled && rlRes.ok && json.ok !== false && json.summary) {
           setData((current) => ({
@@ -420,10 +410,6 @@ export function DashboardClient({ initial, initialTab = "cockpit", rlVariant = "
             research: {
               ...current.research,
               kalshiRl: json.summary,
-              kalshiPretrainedRl:
-                pretrainedRes.ok && pretrained.ok !== false && pretrained.summary
-                  ? pretrained.summary
-                  : current.research.kalshiPretrainedRl,
             },
           }));
         }
@@ -461,6 +447,20 @@ export function DashboardClient({ initial, initialTab = "cockpit", rlVariant = "
 
   async function refresh() {
     try {
+      if (rlOnly) {
+        const res = await fetch("/api/kalshi/rl/summary", { cache: "no-store" });
+        const json = (await res.json()) as { ok?: boolean; generatedAt?: string; summary?: KalshiRlSummary; error?: string };
+        if (!res.ok || json.ok === false || !json.summary) throw new Error(json.error ?? "Refresh failed.");
+        setData((current) => ({
+          ...current,
+          generatedAt: json.generatedAt ?? new Date().toISOString(),
+          research: {
+            ...current.research,
+            kalshiRl: json.summary,
+          },
+        }));
+        return;
+      }
       const res = await fetch("/api/dashboard", { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Refresh failed.");
@@ -532,14 +532,19 @@ export function DashboardClient({ initial, initialTab = "cockpit", rlVariant = "
         >
           <div>
             <p className="mono text-xs uppercase text-[color:var(--accent)]">
-              paper-only 24/7 crypto cockpit
+              {rlOnly ? "Kalshi agent swarm" : "paper-only 24/7 crypto cockpit"}
             </p>
             <h1 className="mt-2 text-3xl font-semibold">
-              {tab === "rl" && rlVariant === "v2" ? "Recursive Quant Fund RL V2" : "Recursive Quant Fund Cockpit"}
+              {tab === "rl"
+                ? rlVariant === "v2"
+                  ? "Recursive Quant Fund RL V2"
+                  : "Recursive Quant Fund RL"
+                : "Recursive Quant Fund Cockpit"}
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-[color:var(--muted)]">
-              Read-only Alpaca/Kalshi integrations, 15-minute BTC/ETH/SOL paper cycles,
-              local ledger feedback, optimizer proposals, and experimental t-RSI certificate tracking.
+              {rlOnly
+                ? "Validated genetic agents, live Kalshi ticks, paper performance, and live-safety gates."
+                : "Read-only Alpaca/Kalshi integrations, 15-minute BTC/ETH/SOL paper cycles, local ledger feedback, optimizer proposals, and experimental t-RSI certificate tracking."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -551,29 +556,33 @@ export function DashboardClient({ initial, initialTab = "cockpit", rlVariant = "
             >
               Refresh
             </button>
-            <button
-              className="control-button border-transparent bg-[color:var(--accent)] font-semibold text-[#07110f] hover:brightness-110 disabled:opacity-50"
-              disabled={isPending}
-              onClick={proposePaperAllocation}
-              type="button"
-            >
-              Paper Proposal
-            </button>
-            <button
-              className="control-button border-transparent bg-[color:var(--info)] font-semibold text-[#07111f] hover:brightness-110 disabled:opacity-50"
-              disabled={isPending}
-              onClick={runPaperCycle}
-              type="button"
-            >
-              Run Cycle
-            </button>
+            {!rlOnly ? (
+              <>
+                <button
+                  className="control-button border-transparent bg-[color:var(--accent)] font-semibold text-[#07110f] hover:brightness-110 disabled:opacity-50"
+                  disabled={isPending}
+                  onClick={proposePaperAllocation}
+                  type="button"
+                >
+                  Paper Proposal
+                </button>
+                <button
+                  className="control-button border-transparent bg-[color:var(--info)] font-semibold text-[#07111f] hover:brightness-110 disabled:opacity-50"
+                  disabled={isPending}
+                  onClick={runPaperCycle}
+                  type="button"
+                >
+                  Run Cycle
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </header>
 
       <div className={`mx-auto px-5 py-5 ${tab === "rl" ? "max-w-[1680px]" : "max-w-7xl"}`}>
         <nav className="mb-5 flex w-full max-w-2xl rounded-md border border-[color:var(--line)] bg-[color:var(--panel)] p-1">
-          {(["cockpit", "research", "rl", "outcomes", "allocation", "ops"] as const).map((id) => (
+          {(rlOnly ? (["rl"] as const) : (["cockpit", "research", "rl", "outcomes", "allocation", "ops"] as const)).map((id) => (
             <button
               key={id}
               className={`flex-1 rounded px-3 py-2 text-sm capitalize transition ${
@@ -761,7 +770,6 @@ function Cockpit({
       <section className="space-y-5">
         <Certificate data={data} />
         <KalshiRlPanel data={data} />
-        <PretrainedRlPanel data={data} compactView />
         <RiskVisual data={data} />
         <CyclePanel data={data} />
         <Ledger records={data.ledger.slice(0, 8)} />
@@ -1051,91 +1059,12 @@ function KalshiRlPanel({ data }: { data: DashboardPayload }) {
   );
 }
 
-function PretrainedRlPanel({ data, compactView = false }: { data: DashboardPayload; compactView?: boolean }) {
-  const summary = data.research.kalshiPretrainedRl;
-  const run = summary?.lastRun ?? null;
-  const signal = summary?.latestSignal ?? null;
-  const molly = summary?.mollyLine ?? null;
-  const champion = summary?.champion ?? null;
-  const validation = run?.metrics.validation;
-  const test = run?.metrics.test;
-  const signalTone: "good" | "warn" | "neutral" =
-    signal?.ok && signal.side && signal.side !== "flat" ? "good" : signal?.ok ? "warn" : "neutral";
-  return (
-    <Panel title="Pretrained Black-Box RL">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="mono text-xs uppercase text-[color:var(--accent)]">CPU paper shadow</p>
-          <h3 className="mt-2 break-all text-sm font-medium">
-            {champion?.modelId ?? run?.runId ?? "waiting-for-cpu-run"}
-          </h3>
-        </div>
-        <StatusPill tone={run ? "info" : "neutral"}>{run ? "isolated" : "not trained"}</StatusPill>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Metric label="Series" value={summary?.seriesTicker ?? "KXBTC15M"} />
-        <Metric label="Candles" value={compact(run?.candles ?? 0)} />
-        <Metric label="Device" value={run?.device ?? "cpu"} />
-      </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <Metric label="Validation reward" value={validation ? fixed(validation.avgReward, 4) : "n/a"} />
-        <Metric label="Test reward" value={test ? fixed(test.avgReward, 4) : "n/a"} />
-        <Metric label="Promoted" value={run ? (run.promoted ? "yes" : "no") : "n/a"} />
-      </div>
-      <div className="mt-4 rounded-md border border-[color:var(--line)] bg-black/10 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs uppercase text-[color:var(--muted)]">Latest shadow signal</p>
-          <StatusPill tone={signalTone}>{signal?.ok ? signal.side ?? "flat" : "waiting"}</StatusPill>
-        </div>
-        <p className="mt-2 mono text-sm">
-          {signal?.ok
-            ? `${signal.action ?? "flat"} · confidence ${fixed(signal.confidence ?? 0, 3)}`
-            : signal?.reason ?? "Run npm run kalshi:pretrained-rl-train to create the first checkpoint."}
-        </p>
-        {signal?.marketTicker ? (
-          <p className="mt-2 truncate text-xs text-[color:var(--muted)]">
-            {signal.marketTicker} · observed {signal.observedAt ? shortTime(signal.observedAt) : "n/a"} · window{" "}
-            {signal.inputWindowHash ?? "n/a"}
-          </p>
-        ) : null}
-      </div>
-      <div className="mt-4 rounded-md border border-[color:var(--line)] bg-black/10 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs uppercase text-[color:var(--muted)]">Molly line</p>
-          <StatusPill tone={molly ? "info" : "neutral"}>{molly ? "paper live" : "waiting"}</StatusPill>
-        </div>
-        {molly?.agents?.length ? (
-          <div className="mt-3 space-y-2">
-            {molly.agents.slice(0, 5).map((agent) => (
-              <div key={agent.agentId} className="flex items-center justify-between gap-3 text-sm">
-                <span className="truncate">{agent.displayName}</span>
-                <span className="mono text-xs text-[color:var(--muted)]">
-                  {agent.status === "paper_live_trade" ? agent.side.toUpperCase() : "HOLD"} ·{" "}
-                  {fixed(agent.confidence, 3)}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-2 text-xs text-[color:var(--muted)]">
-            Run npm run kalshi:pretrained-rl-molly to evaluate Molly agents on the live feed.
-          </p>
-        )}
-      </div>
-      {!compactView && run?.notes?.length ? (
-        <p className="mt-3 text-xs text-[color:var(--muted)]">{run.notes[0]}</p>
-      ) : null}
-    </Panel>
-  );
-}
-
 function RlVisibility({ data, variant = "classic" }: { data: DashboardPayload; variant?: RlVariant }) {
   const [agentSort, setAgentSort] = useState<{ key: LiveAgentSortKey; direction: "asc" | "desc" }>({
     key: "totalPnl",
     direction: "desc",
   });
   const rl = data.research.kalshiRl;
-  const mollyLine = data.research.kalshiPretrainedRl?.mollyLine ?? null;
   const lastRun = rl?.lastRun ?? null;
   const champion = rl?.champion ?? null;
   const generationComparison = rl?.generationComparison ?? null;
@@ -1155,10 +1084,8 @@ function RlVisibility({ data, variant = "classic" }: { data: DashboardPayload; v
   const routeTopElites = (generationComparison?.topElites ?? []).filter((entry) =>
     variant === "v2" ? isSpecializedGenome(entry.genomeId) : !isSpecializedGenome(entry.genomeId),
   );
-  const allMollyAgents = variant === "v2" ? [] : protectedMollyAgents(mollyLine);
-  const mollyAgents = retainedMollyAgents(allMollyAgents);
   const quoteChart = buildRlQuoteChart(rl);
-  const agentPnlChart = buildAgentPnlChart(rl, allRows, allMollyAgents, mollyLine, data.generatedAt, variant);
+  const agentPnlChart = buildAgentPnlChart(rl, allRows, data.generatedAt, variant);
   const latestAgeSeconds = latest
     ? Math.max(0, Math.round((Date.parse(data.generatedAt) - Date.parse(latest.receivedAt)) / 1000))
     : null;
@@ -1188,21 +1115,13 @@ function RlVisibility({ data, variant = "classic" }: { data: DashboardPayload; v
   const openRows = rows
     .map((row) => ({ row, summary: openPositionSummary(row.openPositions ?? []) }))
     .filter(({ row }) => (row.openPositions ?? []).length > 0);
-  const mollyOpenRows = mollyAgents
-    .map((agent) => ({ agent, summary: mollyOpenPositionSummary(agent, mollyLine, latest) }))
-    .filter(({ summary }) => summary.isOpen);
-  const openPaidUsd =
-    openRows.reduce((sum, item) => sum + item.summary.costBasisUsd, 0) +
-    mollyOpenRows.reduce((sum, item) => sum + item.summary.costBasisUsd, 0);
-  const openMarkUsd =
-    openRows.reduce((sum, item) => sum + item.summary.markValueUsd, 0) +
-    mollyOpenRows.reduce((sum, item) => sum + item.summary.markValueUsd, 0);
+  const openPaidUsd = openRows.reduce((sum, item) => sum + item.summary.costBasisUsd, 0);
+  const openMarkUsd = openRows.reduce((sum, item) => sum + item.summary.markValueUsd, 0);
   const openPnlUsd = openMarkUsd - openPaidUsd;
-  const openContracts =
-    openRows.reduce((sum, item) => {
-      const net = item.row.openPositions?.reduce((positionSum, position) => positionSum + Math.abs(position.netContracts), 0);
-      return sum + (net ?? 0);
-    }, 0) + mollyOpenRows.reduce((sum, item) => sum + item.summary.netContracts, 0);
+  const openContracts = openRows.reduce((sum, item) => {
+    const net = item.row.openPositions?.reduce((positionSum, position) => positionSum + Math.abs(position.netContracts), 0);
+    return sum + (net ?? 0);
+  }, 0);
   const validatedRows = rows.filter((row) => row.tier === "validated");
   const accountingRows = rows.filter((row) => row.contributesToPerformance);
   const testingRows = rows.filter((row) => !validatedRows.includes(row));
@@ -1294,72 +1213,6 @@ function RlVisibility({ data, variant = "classic" }: { data: DashboardPayload; v
         },
       };
     }),
-    ...mollyAgents.map((agent) => {
-      const openPosition = mollyOpenPositionSummary(agent, mollyLine, latest);
-      const latestTrade = agent.recentTrades?.at(-1) ?? null;
-      const pnlUsd = agent.pnlUsd ?? openPosition.unrealizedPnlUsd;
-      const reward = agent.reward ?? agent.confidence;
-      const performance = mollyPerformance(agent, rl?.bankrollUsd ?? 1000);
-      const statusLabel =
-        agent.status === "paper_live_trade" ? "paper trade" : agent.status === "paper_hold" ? "hold" : "waiting";
-      const mollyStatusTone: StatusTone =
-        agent.status === "paper_live_trade" ? "good" : agent.status === "paper_hold" ? "warn" : "neutral";
-      const lastSide = agent.side.toUpperCase();
-      const entryPrice = latestTrade?.entryPrice ?? (openPosition.isOpen ? openPosition.entryPrice : null);
-      const exitPrice = latestTrade?.exitPrice ?? (openPosition.isOpen ? openPosition.markPrice : null);
-      const lastPnl = agent.trades || openPosition.isOpen ? pnlUsd : null;
-      const lastAction = latestTrade ? `${shortTime(latestTrade.openedAt)} · ${latestTrade.reason}` : agent.reason;
-      return {
-        id: agent.agentId,
-        agentLabel: agent.displayName,
-        subLabel: `${agent.agentId} · gen ${agent.generation ?? 1}`,
-        title: mollyLineageTitle(agent, mollyLine),
-        statusLabel,
-        statusTone: mollyStatusTone,
-        tier: "testing" as const,
-        contributesToPerformance: false,
-        eliteTags: [],
-        archivedReason: undefined,
-        trades: agent.trades ?? (agent.status === "paper_live_trade" ? 1 : 0),
-        openPosition,
-        pnl20m: pnlUsd,
-        pnl50m: pnlUsd,
-        seen: agent.generation ?? 1,
-        lastSide,
-        entryPrice,
-        exitPrice,
-        lastPnl,
-        reward,
-        totalPnl: pnlUsd,
-        performance,
-        lastAction,
-        sort: {
-          agent: agent.displayName,
-          status: statusLabel,
-          tier: "testing",
-          trades: agent.trades ?? (agent.status === "paper_live_trade" ? 1 : 0),
-          openNet: Math.abs(openPosition.netContracts),
-          openPaid: openPosition.costBasisUsd,
-          markValue: openPosition.markValueUsd,
-          openPnl: openPosition.unrealizedPnlUsd,
-          pnl20m: pnlUsd,
-          pnl50m: pnlUsd,
-          seen: agent.generation ?? 1,
-          lastSide,
-          entry: entryPrice ?? Number.NEGATIVE_INFINITY,
-          exit: exitPrice ?? Number.NEGATIVE_INFINITY,
-          lastPnl: lastPnl ?? Number.NEGATIVE_INFINITY,
-          reward,
-          totalPnl: pnlUsd,
-          bankrollReturn: performance.returnOnBankroll,
-          riskReturn: performance.returnOnRisk,
-          gained: performance.grossGainedUsd,
-          lost: performance.grossLostUsd,
-          winLoss: performance.betsWon - performance.betsLost,
-          lastAction,
-        },
-      };
-    }),
   ].sort((a, b) => compareLiveAgentRows(a, b, agentSort));
 
   return (
@@ -1429,8 +1282,6 @@ function RlVisibility({ data, variant = "classic" }: { data: DashboardPayload; v
         </div>
       </section>
 
-      <PretrainedRlPanel data={data} />
-
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.75fr)]">
         <Panel title="Changing Prices">
           <div className="h-[360px] min-w-0">
@@ -1490,8 +1341,8 @@ function RlVisibility({ data, variant = "classic" }: { data: DashboardPayload; v
         <div className="space-y-5">
           <Panel title="Agent Population">
             <div className="grid grid-cols-2 gap-3">
-              <RlStat label="Active" value={String(rows.length + mollyAgents.length)} tone="up" />
-              <RlStat label="Testing tier" value={String(testingRows.length + mollyAgents.length)} tone="info" />
+              <RlStat label="Active" value={String(rows.length)} tone="up" />
+              <RlStat label="Testing tier" value={String(testingRows.length)} tone="info" />
               <RlStat label="Validated tier" value={String(validatedRows.length)} tone="up" />
               <RlStat label="Accounting" value={String(accountingRows.length)} tone="info" />
               <RlStat
@@ -1503,7 +1354,7 @@ function RlVisibility({ data, variant = "classic" }: { data: DashboardPayload; v
             <p className="mt-3 text-xs text-[color:var(--muted)]">
               Testing agents can explore and breed but do not count in the fund-level PnL stats. Validated agents are
               the only genetic agents included in performance accounting. Candidates: {candidates}; exploring:{" "}
-              {exploring}; Molly retained: {mollyAgents.length}/{allMollyAgents.length}.
+              {exploring}.
             </p>
           </Panel>
 
@@ -1535,10 +1386,10 @@ function RlVisibility({ data, variant = "classic" }: { data: DashboardPayload; v
       </div>
 
       <Panel title="Open Positions">
-        {openRows.length || mollyOpenRows.length ? (
+        {openRows.length ? (
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <RlStat label="Agents holding" value={String(openRows.length + mollyOpenRows.length)} tone="info" />
+              <RlStat label="Agents holding" value={String(openRows.length)} tone="info" />
               <RlStat label="Net contracts" value={fixed(openContracts, 2)} tone="neutral" />
               <RlStat label="Open paid" value={money(openPaidUsd)} tone="neutral" />
               <RlStat label="Marked PnL" value={money(openPnlUsd)} tone={openPnlUsd >= 0 ? "up" : "down"} />
@@ -1593,32 +1444,6 @@ function RlVisibility({ data, variant = "classic" }: { data: DashboardPayload; v
                       </tr>
                     );
                   })}
-                  {mollyOpenRows.map(({ agent, summary }) => (
-                    <tr key={agent.agentId} title={summary.title}>
-                      <td className="max-w-56 truncate py-3 pr-4">
-                        <span className="font-medium">{agent.displayName}</span>
-                        <span className="mt-1 block truncate mono text-xs text-[color:var(--muted)]">
-                          retained Molly
-                        </span>
-                      </td>
-                      <td className="max-w-64 truncate py-3 pr-4 mono">{summary.marketTicker}</td>
-                      <td className="py-3 pr-4 mono">{summary.sideLabel}</td>
-                      <td className="py-3 pr-4 mono">{cents(summary.entryPrice)}</td>
-                      <td className="py-3 pr-4 mono">{cents(summary.markPrice)}</td>
-                      <td className="py-3 pr-4 mono">{money(summary.costBasisUsd)}</td>
-                      <td className="py-3 pr-4 mono">{money(summary.markValueUsd)}</td>
-                      <td
-                        className={`py-3 pr-4 mono ${
-                          summary.unrealizedPnlUsd >= 0 ? "text-emerald-200" : "text-rose-200"
-                        }`}
-                      >
-                        {money(summary.unrealizedPnlUsd)}
-                      </td>
-                      <td className="py-3 mono text-xs text-[color:var(--muted)]">
-                        {shortTime(agent.generatedAt)} · pretrained
-                      </td>
-                    </tr>
-                  ))}
                 </tbody>
               </table>
             </div>
@@ -1747,7 +1572,7 @@ function RlVisibility({ data, variant = "classic" }: { data: DashboardPayload; v
         </div>
         <p className="mt-3 text-xs text-[color:var(--muted)]">
           Only post-validation genetic performance is counted here. The run that first clears the validation threshold is
-          treated as the gate; testing-tier kids, random probes, validation-run PnL, and Molly benchmark rows are excluded.
+          treated as the gate; testing-tier kids, random probes, and validation-run PnL are excluded.
         </p>
       </Panel>
 
@@ -2000,9 +1825,8 @@ function RlVisibility({ data, variant = "classic" }: { data: DashboardPayload; v
             <p className="mt-3 text-xs text-[color:var(--muted)]">
               Rows are re-scored from the latest tick path every second. Promotion still happens on the generation
               cadence. Open value is the marked notional at the current 5-minute evaluation cut; final binary
-              settlement still sends one side to 100c and the other to 0c at the 15-minute close. Molly rows are
-              pretrained paper-shadow agents; inactive Molly branches can be hidden, but one Molly line is always kept.
-              Testing-tier rows are excluded from fund-level PnL accounting and future live execution gates.
+              settlement still sends one side to 100c and the other to 0c at the 15-minute close. Testing-tier rows are
+              excluded from fund-level PnL accounting and future live execution gates.
             </p>
           </div>
         ) : (
@@ -3252,9 +3076,6 @@ function stableNameHash(value: string): number {
 type RlLeaderboardRow = NonNullable<
   NonNullable<DashboardPayload["research"]["kalshiRl"]>["lastRun"]
 >["leaderboard"][number];
-type MollyLine = NonNullable<NonNullable<DashboardPayload["research"]["kalshiPretrainedRl"]>["mollyLine"]>;
-type MollyAgentRow = MollyLine["agents"][number];
-type RlLatestEvent = NonNullable<DashboardPayload["research"]["kalshiRl"]>["latestEvent"];
 type PaperPerformance = NonNullable<RlLeaderboardRow["performance"]>;
 type StatusTone = "good" | "warn" | "bad" | "info" | "neutral";
 type LiveAgentSortKey =
@@ -3309,132 +3130,6 @@ type LiveAgentTableRow = {
   sort: Record<LiveAgentSortKey, LiveAgentSortValue>;
 };
 
-const MOLLY_AGENT_BASE: Array<Pick<MollyAgentRow, "agentId" | "displayName" | "minConfidence"> & { maxNotionalUsd: number }> = [
-  { agentId: "molly-parent", displayName: "Molly Parent", minConfidence: 0.56, maxNotionalUsd: 8 },
-  { agentId: "molly-kid-ada", displayName: "Ada Molly", minConfidence: 0.52, maxNotionalUsd: 5 },
-  { agentId: "molly-kid-grace", displayName: "Grace Molly", minConfidence: 0.58, maxNotionalUsd: 10 },
-  { agentId: "molly-kid-hedy", displayName: "Hedy Molly", minConfidence: 0.64, maxNotionalUsd: 15 },
-  { agentId: "molly-kid-katherine", displayName: "Katherine Molly", minConfidence: 0.7, maxNotionalUsd: 20 },
-  { agentId: "molly-kid-joan", displayName: "Joan Molly", minConfidence: 0.78, maxNotionalUsd: 25 },
-];
-
-function protectedMollyAgents(line: MollyLine | null): MollyAgentRow[] {
-  const existing = new Map((line?.agents ?? []).map((agent) => [agent.agentId, agent]));
-  const signal = line?.baseSignal ?? null;
-  return MOLLY_AGENT_BASE.map((base) => {
-    const agent = existing.get(base.agentId);
-    if (agent) return agent;
-    const confidence = signal?.confidence ?? 0;
-    const side = signal?.side ?? "flat";
-    const canTrade = Boolean(signal?.ok && side !== "flat" && confidence >= base.minConfidence);
-    return {
-      agentId: base.agentId,
-      displayName: base.displayName,
-      minConfidence: base.minConfidence,
-      notionalUsd: canTrade ? base.maxNotionalUsd : 0,
-      familyName: "Molly",
-      lineage: "molly",
-      parentAgentId: base.agentId === "molly-parent" ? null : "molly-parent",
-      generation: base.agentId === "molly-parent" ? 1 : 2,
-      generatedAt: line?.generatedAt ?? signal?.generatedAt ?? "",
-      marketTicker: signal?.marketTicker ?? null,
-      modelId: signal?.modelId ?? null,
-      action: signal?.action ?? "flat",
-      side,
-      size: signal?.size ?? "none",
-      confidence,
-      status: canTrade ? "paper_live_trade" : signal?.ok ? "paper_hold" : "waiting",
-      reward: canTrade ? confidence * 2 : confidence - base.minConfidence,
-      pnlUsd: 0,
-      trades: canTrade ? 1 : 0,
-      openPositions: [],
-      recentTrades: [],
-      reason: canTrade
-        ? `${base.displayName} paper-live shadow trade from pretrained signal.`
-        : signal?.ok
-          ? `${base.displayName} held; confidence below Molly threshold or flat action.`
-          : signal?.reason ?? `${base.displayName} is waiting for a live pretrained signal.`,
-    };
-  });
-}
-
-function retainedMollyAgents(agents: MollyAgentRow[]): MollyAgentRow[] {
-  const active = agents.filter((agent) => agent.status === "paper_live_trade");
-  if (active.length) return active;
-  return [...agents]
-    .sort((a, b) => b.confidence - b.minConfidence - (a.confidence - a.minConfidence))
-    .slice(0, 1);
-}
-
-function mollyLineageTitle(agent: MollyAgentRow, line: MollyLine | null): string {
-  const kids = (line?.agents ?? []).filter((candidate) => candidate.parentAgentId === agent.agentId);
-  return [
-    `${agent.displayName} (${agent.agentId})`,
-    "Family: Molly",
-    "Source: pretrained RL paper-shadow checkpoint",
-    `Generation: ${agent.generation ?? 1}`,
-    `Parent: ${agent.parentAgentId ?? "seed pretrained model"}`,
-    `Kids: ${kids.map((kid) => kid.displayName).join(", ") || "none"}`,
-    `Model: ${agent.modelId ?? line?.baseSignal?.modelId ?? "n/a"}`,
-    `Action: ${agent.action}`,
-    `Confidence: ${fixed(agent.confidence, 3)} / threshold ${fixed(agent.minConfidence, 2)}`,
-    `Retained: ${agent.status === "paper_live_trade" ? "active signal" : "best Molly fallback"}`,
-    agent.reason,
-  ].join("\n");
-}
-
-function mollyOpenPositionSummary(agent: MollyAgentRow, line: MollyLine | null, latest: RlLatestEvent | null) {
-  if ((agent.openPositions ?? []).length) {
-    const fromAgent = openPositionSummary(agent.openPositions ?? []);
-    const primary = agent.openPositions?.[0];
-    return {
-      isOpen: true,
-      marketTicker: primary?.marketTicker ?? agent.marketTicker ?? "n/a",
-      sideLabel: fromAgent.sideLabel,
-      entryPrice: primary?.averageEntryPrice ?? null,
-      markPrice: primary?.markPrice ?? null,
-      netContracts: agent.openPositions?.reduce((sum, position) => sum + Math.abs(position.netContracts), 0) ?? 0,
-      costBasisUsd: fromAgent.costBasisUsd,
-      markValueUsd: fromAgent.markValueUsd,
-      unrealizedPnlUsd: fromAgent.unrealizedPnlUsd,
-      title: fromAgent.title,
-    };
-  }
-  const entryPrice = line?.baseSignal?.entryMark ?? null;
-  const markPrice =
-    agent.side === "yes"
-      ? latest?.yesBid ?? entryPrice
-      : agent.side === "no"
-        ? latest?.noBid ?? entryPrice
-        : entryPrice;
-  const isOpen =
-    agent.status === "paper_live_trade" &&
-    agent.notionalUsd > 0 &&
-    agent.side !== "flat" &&
-    entryPrice != null &&
-    entryPrice > 0 &&
-    markPrice != null;
-  const netContracts = isOpen ? agent.notionalUsd / Math.max(entryPrice, 0.01) : 0;
-  const markValueUsd = isOpen ? netContracts * markPrice : 0;
-  const unrealizedPnlUsd = markValueUsd - (isOpen ? agent.notionalUsd : 0);
-  return {
-    isOpen,
-    marketTicker: agent.marketTicker ?? line?.baseSignal?.marketTicker ?? "n/a",
-    sideLabel: isOpen ? `${agent.side.toUpperCase()} ${fixed(netContracts, 2)}` : "none",
-    entryPrice: entryPrice ?? null,
-    markPrice: markPrice ?? null,
-    netContracts,
-    costBasisUsd: isOpen ? agent.notionalUsd : 0,
-    markValueUsd,
-    unrealizedPnlUsd,
-    title: isOpen
-      ? `${agent.displayName}: ${agent.side.toUpperCase()} ${fixed(netContracts, 2)} contracts, paid ${money(
-          agent.notionalUsd,
-        )}, marked ${money(markValueUsd)} at ${cents(markPrice)}`
-      : `${agent.displayName} has no open Molly paper-shadow position.`,
-  };
-}
-
 function performanceFromPaper(
   trades: NonNullable<RlLeaderboardRow["recentTrades"]>,
   openPositions: NonNullable<RlLeaderboardRow["openPositions"]>,
@@ -3475,13 +3170,6 @@ function performanceFromPaper(
 
 function rowPerformance(row: RlLeaderboardRow, bankrollUsd: number): PaperPerformance {
   return row.performance ?? performanceFromPaper(row.recentTrades ?? [], row.openPositions ?? [], bankrollUsd, row.pnlUsd);
-}
-
-function mollyPerformance(agent: MollyAgentRow, bankrollUsd: number): PaperPerformance {
-  return (
-    agent.performance ??
-    performanceFromPaper(agent.recentTrades ?? [], agent.openPositions ?? [], bankrollUsd, agent.pnlUsd ?? 0)
-  );
 }
 
 function aggregatePerformances(performances: PaperPerformance[], bankrollUsd: number): PaperPerformance {
@@ -3569,8 +3257,6 @@ function isSpecializedGenome(genomeId: string): boolean {
 function buildAgentPnlChart(
   rl: DashboardPayload["research"]["kalshiRl"],
   currentRows: RlLeaderboardRow[],
-  mollyAgents: MollyAgentRow[],
-  mollyLine: MollyLine | null,
   generatedAt: string,
   variant: RlVariant,
 ): AgentPnlChart {
@@ -3618,16 +3304,7 @@ function buildAgentPnlChart(
       role: lineageRoleForGenome(row.genome.genomeId),
     };
   });
-  const mollySeries = mollyAgents.slice(0, 4).map((agent, index) => ({
-    id: agent.agentId,
-    key: agentPnlKey(agent.agentId),
-    label: agent.displayName,
-    color: variant === "v2" ? LINEAGE_ROLES.molly.color : CHART_COLORS[(geneticSeries.length + index) % CHART_COLORS.length],
-    deprecated: false,
-    family: "molly" as const,
-    role: "molly" as const,
-  }));
-  const series = [...geneticSeries, ...mollySeries];
+  const series = geneticSeries;
   const points = history.map((run) => {
     const point: AgentPnlChartPoint = {
       label: chartLabel(run.generatedAt),
@@ -3636,9 +3313,6 @@ function buildAgentPnlChart(
     for (const item of geneticSeries) {
       const row = run.leaderboard.find((candidate) => candidate.genome.genomeId === item.id);
       point[item.key] = row?.pnlUsd ?? null;
-    }
-    for (const item of mollySeries) {
-      point[item.key] = null;
     }
     return point;
   });
@@ -3651,10 +3325,6 @@ function buildAgentPnlChart(
     for (const item of geneticSeries) {
       const row = currentRows.find((candidate) => candidate.genome.genomeId === item.id);
       currentPoint[item.key] = row?.pnlUsd ?? null;
-    }
-    for (const item of mollySeries) {
-      const agent = mollyAgents.find((candidate) => candidate.agentId === item.id);
-      currentPoint[item.key] = agent?.pnlUsd ?? mollyOpenPositionSummary(agent!, mollyLine, null).unrealizedPnlUsd ?? null;
     }
     points.push(currentPoint);
   }

@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 
 import { DashboardClient } from "@/components/DashboardClient";
 import { hasOperatorAccessHeaders } from "@/lib/access";
-import { buildDashboardPayload } from "@/lib/dashboard";
+import { buildRlDashboardPayload } from "@/lib/dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -17,13 +17,13 @@ export default async function Home() {
           </p>
           <h1 className="mt-3 text-2xl font-semibold">Dashboard Locked</h1>
           <p className="mt-3 text-sm text-[color:var(--muted)]">
-            This cockpit exposes account state, research runs, and ledger records. Open it on
-            localhost or send AGENT_API_TOKEN as a Bearer token from an operator client.
+            This RL dashboard exposes agent state and live safety telemetry. Open it on localhost or
+            send AGENT_API_TOKEN as a Bearer token from an operator client.
           </p>
         </section>
       </main>
     );
   }
-  const initial = await buildDashboardPayload();
-  return <DashboardClient initial={initial} />;
+  const initial = await buildRlDashboardPayload();
+  return <DashboardClient initial={initial} initialTab="rl" />;
 }

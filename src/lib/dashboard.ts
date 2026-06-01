@@ -320,12 +320,11 @@ export async function buildDashboardPayload(options: DashboardBuildOptions = {})
 }
 
 export async function buildRlDashboardPayload(): Promise<DashboardPayload> {
-  const [ledger, experimentRegistry, recursion, kalshiRl, kalshiPretrainedRl] = await Promise.all([
+  const [ledger, experimentRegistry, recursion, kalshiRl] = await Promise.all([
     readLedger(20),
     readExperimentRegistry(),
     readRecursionState(),
     readKalshiRlSummary(),
-    readKalshiPretrainedRlSummary(),
   ]);
   const paperBook = emptyPaperBook();
   const investmentCalibration = buildInvestmentChannelCalibration(paperBook);
@@ -397,21 +396,6 @@ export async function buildRlDashboardPayload(): Promise<DashboardPayload> {
           command: "npm run kalshi:rl-daemon",
           purpose: "Repeats paper genetic RL updates every 5 minutes by default.",
         },
-        {
-          name: "Pretrained RL train",
-          command: "npm run kalshi:pretrained-rl-train",
-          purpose: "Runs one isolated CPU paper-shadow pretrained RL training pass.",
-        },
-        {
-          name: "Pretrained RL signal",
-          command: "npm run kalshi:pretrained-rl-once",
-          purpose: "Runs one isolated paper-shadow inference pass from the pretrained RL checkpoint.",
-        },
-        {
-          name: "Molly pretrained line",
-          command: "npm run kalshi:pretrained-rl-molly",
-          purpose: "Evaluates Molly-family agents against recent live orderbook events in paper-shadow mode.",
-        },
       ],
     },
     research: {
@@ -421,15 +405,11 @@ export async function buildRlDashboardPayload(): Promise<DashboardPayload> {
       cache: emptyMarketCache(),
       marketSeries: [],
       kalshiRl,
-      kalshiPretrainedRl,
       notes: [
         "Fast RL page: external broker reads, market cache refreshes, and Kalshi history scans are skipped.",
         kalshiRl.recentEvents
           ? `Kalshi RL has ${kalshiRl.recentEvents} recent orderbook event${kalshiRl.recentEvents === 1 ? "" : "s"} for ${kalshiRl.seriesTicker}.`
           : "Kalshi RL is waiting for orderbook ingestion under .data/kalshi-orderbook.",
-        kalshiPretrainedRl.lastRun
-          ? `Pretrained RL latest CPU shadow run ${kalshiPretrainedRl.lastRun.runId} is isolated from genetic RL state.`
-          : "Pretrained RL has no CPU shadow run yet.",
       ],
     },
   };
