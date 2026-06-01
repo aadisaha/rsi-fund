@@ -2999,22 +2999,28 @@ function buildBacktestChart(comparison: ModelComparisonBacktest): BacktestChartP
 }
 
 function buildRlQuoteChart(rl: DashboardPayload["research"]["kalshiRl"]): RlQuoteChartPoint[] {
-  return (rl?.recentQuoteEvents ?? []).map((event) => {
-    const raw = event.raw as { currentPrice?: number; chance?: number } | undefined;
-    return {
-      label: new Date(event.receivedAt).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      }),
-      now: typeof raw?.currentPrice === "number" && Number.isFinite(raw.currentPrice) ? raw.currentPrice : null,
-      up: event.yesAsk == null ? null : Number((event.yesAsk * 100).toFixed(2)),
-      down: event.noAsk == null ? null : Number((event.noAsk * 100).toFixed(2)),
-      chance: typeof raw?.chance === "number" && Number.isFinite(raw.chance)
-        ? Number((raw.chance * 100).toFixed(2))
-        : null,
-    };
-  });
+  const todayAt545 = new Date();
+  todayAt545.setHours(5, 45, 0, 0);
+  const chartStartMs = todayAt545.getTime();
+
+  return (rl?.recentQuoteEvents ?? [])
+    .filter((event) => Date.parse(event.receivedAt) >= chartStartMs)
+    .map((event) => {
+      const raw = event.raw as { currentPrice?: number; chance?: number } | undefined;
+      return {
+        label: new Date(event.receivedAt).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }),
+        now: typeof raw?.currentPrice === "number" && Number.isFinite(raw.currentPrice) ? raw.currentPrice : null,
+        up: event.yesAsk == null ? null : Number((event.yesAsk * 100).toFixed(2)),
+        down: event.noAsk == null ? null : Number((event.noAsk * 100).toFixed(2)),
+        chance: typeof raw?.chance === "number" && Number.isFinite(raw.chance)
+          ? Number((raw.chance * 100).toFixed(2))
+          : null,
+      };
+    });
 }
 
 const AGENT_FIRST_NAMES = [

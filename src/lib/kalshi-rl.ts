@@ -1379,7 +1379,7 @@ export async function readKalshiRlSummary(): Promise<KalshiRlSummary> {
     recentEvents: events.length,
     latestEventAt: events.at(-1)?.receivedAt ?? null,
     latestEvent,
-    recentQuoteEvents: quoteEvents.slice(-96),
+    recentQuoteEvents: quoteEvents.slice(-10_000),
     latestMarketUrl: latestEvent ? marketUrlForTicker(latestEvent.marketTicker) : null,
     liveLeaderboard,
     eliteArchive,
