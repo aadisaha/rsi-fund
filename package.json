@@ -23,6 +23,7 @@
     "kalshi:pretrained-rl-once": "node scripts/kalshi-pretrained-rl-once.mjs",
     "kalshi:pretrained-rl-molly": "node scripts/kalshi-pretrained-rl-molly.mjs",
     "kalshi:pretrained-rl-molly-daemon": "node scripts/kalshi-pretrained-rl-molly-daemon.mjs",
+    "btc15m:swarm-backtest": "node scripts/btc15m-swarm-backtest.mjs",
     "kalshi:live-worker": "node scripts/kalshi-live-worker.mjs",
     "storage:check": "node scripts/storage-check.mjs",
     "lint": "eslint",

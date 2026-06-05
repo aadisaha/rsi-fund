@@ -17,8 +17,8 @@ export default async function Home() {
           </p>
           <h1 className="mt-3 text-2xl font-semibold">Dashboard Locked</h1>
           <p className="mt-3 text-sm text-[color:var(--muted)]">
-            This RL dashboard exposes agent state and live safety telemetry. Open it on localhost or
-            send AGENT_API_TOKEN as a Bearer token from an operator client.
+            This paper RL dashboard exposes agent state and simulated trading performance. Open it on
+            localhost or send AGENT_API_TOKEN as a Bearer token from an operator client.
           </p>
         </section>
       </main>

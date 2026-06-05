@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prediction Agent Performance Slides</title>
+    <link rel="stylesheet" href="./slides.css" />
+  </head>
+  <body>
+    <main class="deck">
+      <nav class="deck-controls" aria-label="Slide controls">
+        <button id="prevSlide" type="button">Previous</button>
+        <div class="progress-shell" aria-hidden="true">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+        <span id="slideCounter" class="slide-counter">01 / 23</span>
+        <button id="nextSlide" type="button">Next</button>
+      </nav>
+
+      <section class="slide-stage" id="slideStage" aria-live="polite">
+        <section class="title-slide deck-slide active" data-slide-label="Title">
+          <p class="eyebrow">Market Efficiency Toy</p>
+          <h1>Prediction Agent and Swarm Performance</h1>
+          <p>
+            Reproducible graphs comparing pretrained, online RL, pre+post-trained,
+            transformer-lite, evolutionary, and weighted swarm predictors across simulated efficient
+            and inefficient markets, including an adaptive crowding cycle where alpha can disappear
+            and re-emerge.
+          </p>
+          <p class="slide-hint">Use the arrow keys, controls, or dots to move through the deck.</p>
+        </section>
+
+        <section class="method-slide deck-slide" data-slide-label="Method">
+          <div>
+            <p class="eyebrow">How The Experiments Work</p>
+            <h2>Agents predict future excess return from past simulated windows.</h2>
+          </div>
+          <div class="method-grid">
+            <article>
+              <h3>Market generator</h3>
+              <p>
+                Returns are generated as drift plus noise plus an expressed latent alpha term:
+                <code>r[t] = drift + (1 - lambda) * alpha[t] + noise[t]</code>. Efficient markets set
+                alpha to zero. Inefficient regimes vary whether alpha is stable, local, rapidly
+                shifting, crowded, or hidden from agents.
+              </p>
+            </article>
+            <article>
+              <h3>Prediction task</h3>
+              <p>
+                Each episode gives the predictor a past window of returns, price trend, volatility,
+                valuation gap, and delayed-news features. The target is up, down, or flat for future
+                excess return over the selected horizon.
+              </p>
+            </article>
+            <article>
+              <h3>Training regimes</h3>
+              <p>
+                Pretrained agents fit historical data and freeze. Online RL agents update after each
+                revealed future. Hybrid agents start pretrained and adapt online. Transformer-lite uses
+                attention over similar historical windows. Evolutionary agents select policy weights
+                on validation data. The swarm votes using recent predictor skill.
+              </p>
+            </article>
+            <article>
+              <h3>Scoring</h3>
+              <p>
+                Directional predictions become confidence-sized positions. Metrics include net PnL,
+                accuracy, Sharpe, calibration error, oracle gap, up/down skill balance, and seed-level
+                stability after transaction-cost and horizon-friction penalties.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="method-slide deck-slide" data-slide-label="Simulation">
+          <div>
+            <p class="eyebrow">How The Markets Were Simulated</p>
+            <h2>Efficiency is controlled by how much latent alpha leaks into future returns.</h2>
+          </div>
+          <div class="simulation-grid">
+            <article>
+              <h3>Return equation</h3>
+              <p>
+                Each simulated period uses
+                <code>r[t] = drift + (1 - lambda) * alpha[t] + noise[t]</code>.
+                When <code>lambda = 1</code>, the predictable alpha term is removed and returns are
+                effectively noise plus drift. As <code>lambda</code> falls, more exploitable structure
+                appears in prices.
+              </p>
+            </article>
+            <article>
+              <h3>Latent alpha</h3>
+              <p>
+                Learnable alpha is generated as <code>alpha[t] = theta[t] dot x[t]</code>. The
+                observable state <code>x[t]</code> contains momentum, valuation gap, and delayed-news
+                features. The coefficient vector <code>theta[t]</code> determines which signal works
+                at that moment.
+              </p>
+            </article>
+            <article>
+              <h3>Efficient null</h3>
+              <p>
+                The efficient regime sets <code>alpha[t] = 0</code>. No public past-window information
+                should predict future excess return after costs. If agents profit here, the pipeline is
+                probably harvesting finite-sample luck, drift, or validation artifacts.
+              </p>
+            </article>
+            <article>
+              <h3>Unlearnable alpha</h3>
+              <p>
+                This regime contains a hidden alpha process, but agents do not observe the hidden
+                state before predicting. It is inefficient from an omniscient perspective, but
+                effectively efficient relative to the agents' information set.
+              </p>
+            </article>
+            <article>
+              <h3>Historical alpha</h3>
+              <p>
+                <code>theta[t]</code> is stable across historical training and future test periods.
+                This favors pretrained and evolutionary agents because old simulated data remains
+                relevant.
+              </p>
+            </article>
+            <article>
+              <h3>Local alpha</h3>
+              <p>
+                <code>theta[t]</code> drifts slowly. Recent interaction predicts near-future alpha
+                better than stale history, so online RL, hybrid, and swarm approaches can adapt.
+              </p>
+            </article>
+            <article>
+              <h3>Rapid shift</h3>
+              <p>
+                The working signal changes quickly. This tests whether learning speed exceeds alpha
+                decay speed. When <code>T_learn &gt; T_decay</code>, both pretraining and online
+                adaptation should struggle.
+              </p>
+            </article>
+            <article>
+              <h3>Crowded alpha</h3>
+              <p>
+                Historical signals decay or partially invert during the test window. This models
+                crowded trades, alpha decay, and regime adaptation after a common edge becomes widely
+                exploited.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="method-slide deck-slide" data-slide-label="Alpha">
+          <div>
+            <p class="eyebrow">What Counts As Alpha?</p>
+            <h2>Alpha is only tradable if it is both present and learnable from the agent's information.</h2>
+          </div>
+          <div class="method-grid">
+            <article>
+              <h3>Latent alpha</h3>
+              <p>
+                The simulator can contain a true predictable component in returns. That is the
+                omniscient notion of alpha: a pattern exists somewhere in the data-generating
+                process.
+              </p>
+            </article>
+            <article>
+              <h3>Tradable alpha</h3>
+              <p>
+                Agents only get past-window observations. A hidden signal may exist, but if it is
+                outside the agent's information set, the market is effectively efficient for that
+                agent.
+              </p>
+            </article>
+            <article>
+              <h3>Historical relevance</h3>
+              <p>
+                Pretraining helps when future alpha resembles historical alpha. It hurts when the
+                market changes, crowding reverses the edge, or old examples become stale.
+              </p>
+            </article>
+            <article>
+              <h3>Adaptation speed</h3>
+              <p>
+                Online and swarm methods only help when <code>T_learn &lt; T_decay</code>: the agent
+                must infer the current edge before the edge disappears.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="method-slide deck-slide" data-slide-label="Reading">
+          <div>
+            <p class="eyebrow">How To Read The Graphs</p>
+            <h2>The deck is about which training regime captures which type of market structure.</h2>
+          </div>
+          <div class="method-grid">
+            <article>
+              <h3>Red reference lines</h3>
+              <p>
+                PnL and alpha charts use a red <code>0%</code> line. Accuracy charts use a red
+                <code>50%</code> line. Crossing below those lines usually means the model is not
+                extracting useful structure.
+              </p>
+            </article>
+            <article>
+              <h3>Cumulative curves</h3>
+              <p>
+                Cumulative PnL curves show how each agent performs as prediction episodes unfold
+                through the simulated test market. The x-axis is forecast opportunities, not seed
+                number.
+              </p>
+            </article>
+            <article>
+              <h3>Aggregate bars</h3>
+              <p>
+                Regime-level bar charts average across seeds. They answer: in this kind of market,
+                which information-access and training regime wins on average?
+              </p>
+            </article>
+            <article>
+              <h3>Oracle gap</h3>
+              <p>
+                The oracle knows the future label and is not tradable. Its gap measures how much of
+                the theoretical opportunity normal agents fail to capture.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="status-panel deck-slide" id="statusPanel">
+          <span class="spinner"></span>
+          <strong>Generating insight graphs from deterministic simulations...</strong>
+        </section>
+
+        <section class="slide-grid" id="slideGrid" aria-live="polite"></section>
+      </section>
+
+      <div class="slide-dots" id="slideDots" aria-label="Jump to slide"></div>
+    </main>
+
+    <script src="./slides.js"></script>
+  </body>
+</html>

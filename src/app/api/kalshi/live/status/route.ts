@@ -1,26 +1,29 @@
 import { NextResponse } from "next/server";
 
-import { requireOperatorAccess } from "@/lib/access";
-import { readKalshiLiveStatus } from "@/lib/kalshi-live";
-
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-  try {
-    const denied = requireOperatorAccess(req);
-    if (denied) return denied;
-
-    return NextResponse.json({
-      ok: true,
-      status: await readKalshiLiveStatus(),
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : "Unknown Kalshi live status error.",
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    status: {
+      tradingEnabled: false,
+      killSwitch: {
+        active: false,
+        effectiveActive: false,
+        reason: "Paper-only host; live trading route is not deployed.",
+        source: "system",
+        updatedAt: new Date(0).toISOString(),
+        envActive: false,
       },
-      { status: 500 },
-    );
-  }
+      safetyHalt: null,
+      blockers: ["paper-only-host"],
+      exposure: {
+        openUsd: 0,
+        pendingOrderUsd: 0,
+        remotePositionUsd: 0,
+        maxOpenUsd: 0,
+        maxOrderUsd: 0,
+      },
+    },
+  });
 }

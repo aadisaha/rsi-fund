@@ -543,7 +543,7 @@ export function DashboardClient({ initial, initialTab = "cockpit", rlVariant = "
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-[color:var(--muted)]">
               {rlOnly
-                ? "Validated genetic agents, live Kalshi ticks, paper performance, and live-safety gates."
+                ? "Validated genetic agents, Kalshi quote history, and paper-only simulated performance."
                 : "Read-only Alpaca/Kalshi integrations, 15-minute BTC/ETH/SOL paper cycles, local ledger feedback, optimizer proposals, and experimental t-RSI certificate tracking."}
             </p>
           </div>

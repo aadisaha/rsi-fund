@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Market Efficiency Lab</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="lab-shell">
+      <aside class="control-rail" aria-label="Experiment controls">
+        <div class="brand-block">
+          <p class="eyebrow">Market Efficiency Lab</p>
+          <h1>Information access experiment</h1>
+          <p class="lede">
+            Sweep market structure and compare agents by what their training data can know about
+            future alpha.
+          </p>
+        </div>
+
+        <section class="control-section">
+          <div class="section-title">
+            <h2>Preset Worlds</h2>
+            <button id="resetPreset" class="ghost-button" type="button">Reset</button>
+          </div>
+          <div class="preset-grid" id="presetGrid"></div>
+        </section>
+
+        <section class="control-section">
+          <div class="section-title">
+            <h2>Market Knobs</h2>
+          </div>
+
+          <label class="field">
+            <span>Learnability mode</span>
+            <select id="mode">
+              <option value="efficient">Efficient null</option>
+              <option value="unlearnable">Inefficient, unlearnable</option>
+              <option value="historical">Historically learnable</option>
+              <option value="local">Locally learnable</option>
+              <option value="rapid">Rapidly shifting</option>
+              <option value="crowded">Crowded/adaptive</option>
+            </select>
+          </label>
+
+          <div id="rangeControls"></div>
+        </section>
+
+        <section class="control-section">
+          <div class="section-title">
+            <h2>Evaluation</h2>
+          </div>
+          <div class="toggle-list">
+            <label class="toggle-row">
+              <input id="showOracle" type="checkbox" checked />
+              <span>Show oracle upper bound</span>
+            </label>
+            <label class="toggle-row">
+              <input id="useCosts" type="checkbox" checked />
+              <span>Include costs and impact</span>
+            </label>
+            <label class="toggle-row">
+              <input id="nullShuffle" type="checkbox" />
+              <span>Null test: shuffle returns</span>
+            </label>
+            <label class="toggle-row">
+              <input id="manySeeds" type="checkbox" />
+              <span>Average 24 seeds</span>
+            </label>
+          </div>
+        </section>
+
+        <section class="control-section">
+          <div class="section-title">
+            <h2>Prediction Arena</h2>
+          </div>
+          <p class="control-note">
+            Agents see only past simulated windows, predict future direction, then get instant
+            feedback as the simulator fast-forwards.
+          </p>
+          <div id="predictionRangeControls"></div>
+        </section>
+
+        <section class="control-section action-row" aria-label="Export actions">
+          <button id="downloadCsv" class="primary-button" type="button">Download CSV</button>
+          <button id="copyUrl" class="secondary-button" type="button">Copy URL</button>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Current Regime</p>
+            <h2 id="regimeTitle">Efficient null</h2>
+          </div>
+          <div class="top-metrics" id="topMetrics"></div>
+        </header>
+
+        <section class="diagnostic-grid" id="diagnostics"></section>
+
+        <section class="chart-grid">
+          <article class="panel chart-panel large-chart">
+            <div class="panel-head">
+              <div>
+                <h3>Price and Latent Alpha</h3>
+                <p>Alpha is the predictable component before costs. Null tests break the link to observed signals.</p>
+              </div>
+            </div>
+            <canvas id="marketChart" height="280"></canvas>
+          </article>
+
+          <article class="panel chart-panel large-chart">
+            <div class="panel-head">
+              <div>
+                <h3>Agent Equity Curves</h3>
+                <p>Agents trade only from their assigned information access regime.</p>
+              </div>
+            </div>
+            <canvas id="equityChart" height="280"></canvas>
+          </article>
+        </section>
+
+        <section class="panel table-panel">
+          <div class="panel-head table-head">
+            <div>
+              <h3>Cost-Adjusted Results</h3>
+              <p id="tableCaption">Single-seed metrics ranked by net Sharpe.</p>
+            </div>
+            <div class="status-pill" id="tradablePill">Evaluating</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Role</th>
+                  <th>Net PnL</th>
+                  <th>Sharpe</th>
+                  <th>Drawdown</th>
+                  <th>Turnover</th>
+                  <th>Costs</th>
+                  <th>Oracle Capture</th>
+                  <th>Alpha Error</th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel arena-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Prediction Arena</p>
+              <h3>Accelerated agent swarm forecasts</h3>
+              <p>
+                Each agent predicts up, down, or flat from past windows. Rewards are revealed
+                immediately, so RL-style and evolutionary policies can run through simulated
+                generations without waiting for live time.
+              </p>
+            </div>
+            <button id="downloadPredictionCsv" class="secondary-button" type="button">
+              Download Prediction CSV
+            </button>
+          </div>
+
+          <div class="insight-grid" id="predictionInsights"></div>
+
+          <section class="chart-grid">
+            <article class="chart-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Prediction-Derived PnL</h3>
+                  <p>Equity from converting directional confidence into position size.</p>
+                </div>
+              </div>
+              <canvas id="predictionEquityChart" height="260"></canvas>
+            </article>
+
+            <article class="chart-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Accuracy and Calibration</h3>
+                  <p>Accuracy bars with confidence quality overlaid as calibration error.</p>
+                </div>
+              </div>
+              <canvas id="predictionAccuracyChart" height="260"></canvas>
+            </article>
+          </section>
+
+          <section class="chart-grid analytics-grid">
+            <article class="chart-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Seed PnL Dispersion</h3>
+                  <p>Non-oracle prediction PnL across every accelerated seed in the run.</p>
+                </div>
+              </div>
+              <canvas id="predictionSeedPnlChart" height="240"></canvas>
+            </article>
+
+            <article class="chart-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Seed Accuracy Dispersion</h3>
+                  <p>Accuracy stability across seeds, exposing brittle overfit winners.</p>
+                </div>
+              </div>
+              <canvas id="predictionSeedAccuracyChart" height="240"></canvas>
+            </article>
+
+            <article class="chart-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Seed Sharpe Dispersion</h3>
+                  <p>Risk-adjusted prediction performance across independent simulated worlds.</p>
+                </div>
+              </div>
+              <canvas id="predictionSeedSharpeChart" height="240"></canvas>
+            </article>
+
+            <article class="chart-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Oracle Gap By Seed</h3>
+                  <p>How much of the privileged upper bound remains uncaptured.</p>
+                </div>
+              </div>
+              <canvas id="predictionOracleGapChart" height="240"></canvas>
+            </article>
+
+            <article class="chart-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Calibration Curves</h3>
+                  <p>Confidence versus realized hit rate for the leading predictors.</p>
+                </div>
+              </div>
+              <canvas id="predictionCalibrationChart" height="240"></canvas>
+            </article>
+
+            <article class="chart-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Up/Down Skill Balance</h3>
+                  <p>Whether predictors are balanced or only good at one direction.</p>
+                </div>
+              </div>
+              <canvas id="predictionDirectionBalanceChart" height="240"></canvas>
+            </article>
+          </section>
+
+          <div class="table-wrap prediction-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Predictor</th>
+                  <th>Training Regime</th>
+                  <th>Accuracy</th>
+                  <th>Net PnL</th>
+                  <th>Sharpe</th>
+                  <th>Avg Confidence</th>
+                  <th>Calibration Error</th>
+                  <th>Turnover</th>
+                  <th>Correct Up/Down</th>
+                </tr>
+              </thead>
+              <tbody id="predictionResultsBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
