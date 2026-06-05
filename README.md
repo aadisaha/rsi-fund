@@ -72,3 +72,7 @@ OpenRouter: research agents, report generation, experiment diagnostics, and natu
 ## Production Gap
 
 Local files are acceptable for a paper MVP but are not durable production storage. Before unattended paper production, enable Postgres or another transactional store, add queue-backed idempotent jobs, formal auth, monitoring, and backups. Before any capital execution, complete a separate live-order safety review.
+
+
+#AI generation
+This project is almost entirely vibe-coded using Codex.
